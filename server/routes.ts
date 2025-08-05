@@ -1,0 +1,267 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { storage } from "./storage";
+import { 
+  insertCriticalAlertSchema,
+  insertActivityLogSchema,
+  insertSystemMetricSchema,
+  insertSystemHealthSchema 
+} from "@shared/schema";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  const httpServer = createServer(app);
+
+  // WebSocket server for real-time updates
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  // Store connected clients
+  const clients = new Set<WebSocket>();
+
+  wss.on('connection', (ws) => {
+    clients.add(ws);
+    console.log('Client connected to WebSocket');
+
+    ws.on('close', () => {
+      clients.delete(ws);
+      console.log('Client disconnected from WebSocket');
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      clients.delete(ws);
+    });
+  });
+
+  // Broadcast to all connected clients
+  function broadcast(data: any) {
+    const message = JSON.stringify(data);
+    clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  // System Health endpoints
+  app.get("/api/system-health", async (req, res) => {
+    try {
+      const health = await storage.getSystemHealth();
+      res.json(health);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch system health" });
+    }
+  });
+
+  app.post("/api/system-health", async (req, res) => {
+    try {
+      const health = await storage.createSystemHealth(req.body);
+      broadcast({ type: 'system_health_updated', data: health });
+      res.json(health);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create system health record" });
+    }
+  });
+
+  // System Metrics endpoints
+  app.get("/api/system-metrics", async (req, res) => {
+    try {
+      const metrics = await storage.getSystemMetrics();
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch system metrics" });
+    }
+  });
+
+  app.post("/api/system-metrics", async (req, res) => {
+    try {
+      const metric = await storage.createSystemMetric(req.body);
+      broadcast({ type: 'system_metric_updated', data: metric });
+      res.json(metric);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create system metric" });
+    }
+  });
+
+  // Critical Alerts endpoints
+  app.get("/api/critical-alerts", async (req, res) => {
+    try {
+      const alerts = await storage.getActiveCriticalAlerts();
+      res.json(alerts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch critical alerts" });
+    }
+  });
+
+  app.post("/api/critical-alerts", async (req, res) => {
+    try {
+      const validatedData = insertCriticalAlertSchema.parse(req.body);
+      const alert = await storage.createCriticalAlert(validatedData);
+      
+      // Log the alert creation
+      await storage.createActivityLog({
+        eventType: "system_event",
+        title: "Critical alert created",
+        description: alert.title,
+        severity: alert.type,
+        userId: null,
+        metadata: { alertId: alert.id },
+      });
+
+      broadcast({ type: 'critical_alert_created', data: alert });
+      res.json(alert);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create critical alert" });
+    }
+  });
+
+  app.patch("/api/critical-alerts/:id/dismiss", async (req, res) => {
+    try {
+      const alert = await storage.dismissCriticalAlert(req.params.id);
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+
+      // Log the dismissal
+      await storage.createActivityLog({
+        eventType: "user_action",
+        title: "Alert dismissed",
+        description: `Alert "${alert.title}" was dismissed`,
+        severity: "info",
+        userId: null,
+        metadata: { alertId: alert.id },
+      });
+
+      broadcast({ type: 'critical_alert_dismissed', data: alert });
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to dismiss alert" });
+    }
+  });
+
+  // Activity Log endpoints
+  app.get("/api/activity-log", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const log = await storage.getActivityLog(limit);
+      res.json(log);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch activity log" });
+    }
+  });
+
+  app.post("/api/activity-log", async (req, res) => {
+    try {
+      const validatedData = insertActivityLogSchema.parse(req.body);
+      const log = await storage.createActivityLog(validatedData);
+      broadcast({ type: 'activity_log_added', data: log });
+      res.json(log);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create activity log entry" });
+    }
+  });
+
+  // Emergency Settings endpoints
+  app.get("/api/emergency-settings", async (req, res) => {
+    try {
+      const settings = await storage.getEmergencySettings();
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch emergency settings" });
+    }
+  });
+
+  app.patch("/api/emergency-settings/:name", async (req, res) => {
+    try {
+      const { isEnabled } = req.body;
+      const setting = await storage.updateEmergencySetting(req.params.name, { isEnabled });
+      
+      if (!setting) {
+        return res.status(404).json({ message: "Setting not found" });
+      }
+
+      // Log the change
+      await storage.createActivityLog({
+        eventType: "emergency_control",
+        title: `Emergency setting ${isEnabled ? 'enabled' : 'disabled'}`,
+        description: `${req.params.name} was ${isEnabled ? 'enabled' : 'disabled'}`,
+        severity: isEnabled ? "warning" : "info",
+        userId: null,
+        metadata: { settingName: req.params.name, isEnabled },
+      });
+
+      broadcast({ type: 'emergency_setting_updated', data: setting });
+      res.json(setting);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update emergency setting" });
+    }
+  });
+
+  // Business data endpoints (for dashboard metrics)
+  app.get("/api/dashboard-summary", async (req, res) => {
+    try {
+      const systemHealth = await storage.getSystemHealth();
+      const systemMetrics = await storage.getSystemMetrics();
+      const criticalAlerts = await storage.getActiveCriticalAlerts();
+      const recentActivity = await storage.getActivityLog(5);
+      const emergencySettings = await storage.getEmergencySettings();
+
+      const summary = {
+        systemHealth,
+        systemMetrics,
+        criticalAlerts,
+        recentActivity,
+        emergencySettings,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dashboard summary" });
+    }
+  });
+
+  // Simulate real-time updates every 3 minutes
+  setInterval(async () => {
+    try {
+      // Update some metrics with slight variations
+      const apiHealth = await storage.getSystemHealthByService('api');
+      if (apiHealth) {
+        const responseTime = (Math.random() * 2 + 0.5).toFixed(1) + 's';
+        await storage.updateSystemHealth(apiHealth.id, { 
+          responseTime,
+          timestamp: new Date() 
+        });
+        broadcast({ 
+          type: 'system_health_updated', 
+          data: { ...apiHealth, responseTime, timestamp: new Date() }
+        });
+      }
+
+      // Update real-time connections
+      const realtimeHealth = await storage.getSystemHealthByService('realtime');
+      if (realtimeHealth) {
+        const connections = Math.floor(Math.random() * 100) + 800;
+        const details = { 
+          ...realtimeHealth.details as any, 
+          connections,
+          messagesPerSec: Math.floor(Math.random() * 20) + 15
+        };
+        await storage.updateSystemHealth(realtimeHealth.id, { 
+          details,
+          timestamp: new Date() 
+        });
+        broadcast({ 
+          type: 'system_health_updated', 
+          data: { ...realtimeHealth, details, timestamp: new Date() }
+        });
+      }
+
+      console.log('Dashboard metrics updated via real-time simulation');
+    } catch (error) {
+      console.error('Error in real-time update simulation:', error);
+    }
+  }, 180000); // 3 minutes
+
+  return httpServer;
+}
