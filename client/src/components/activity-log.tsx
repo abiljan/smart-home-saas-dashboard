@@ -1,7 +1,6 @@
 import { Clock, AlertCircle, Info, AlertTriangle, User, Settings } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ActivityLogItem {
   id: string;
@@ -76,7 +75,7 @@ export function ActivityLog({ activities }: ActivityLogProps) {
         <CardDescription>Recent system events and user actions</CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-96">
+        <div className="h-96 overflow-y-auto">
           <div className="space-y-3">
             {activities?.map((activity) => (
               <div key={activity.id} className="flex items-start space-x-3 p-3 border rounded-lg">
@@ -116,7 +115,7 @@ export function ActivityLog({ activities }: ActivityLogProps) {
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </CardContent>
     </Card>
   );
