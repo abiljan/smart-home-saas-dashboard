@@ -158,7 +158,7 @@ export default function HomeDetailPage() {
                         Discover Devices
                       </Button>
                     </Link>
-                    <Link href={`/homes/${homeId}/devices`}>
+                    <Link href={`/homes/${homeId}/add-device`}>
                       <Button size="sm">
                         <Plus className="w-4 h-4 mr-2" />
                         Add Device
