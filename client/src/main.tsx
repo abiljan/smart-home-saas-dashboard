@@ -31,13 +31,30 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-          <h2 style="color: #374151; margin-bottom: 15px;">Quick Actions</h2>
-          <button onclick="testAPI()" style="background: #2563eb; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-right: 10px; cursor: pointer;">
-            Test API
-          </button>
-          <button onclick="loadFullDashboard()" style="background: #16a34a; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
-            Load Full Dashboard
-          </button>
+          <h2 style="color: #374151; margin-bottom: 15px;">Navigation & Actions</h2>
+          <div style="margin-bottom: 15px;">
+            <button onclick="testAPI()" style="background: #2563eb; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-right: 10px; margin-bottom: 10px; cursor: pointer;">
+              Test API
+            </button>
+            <button onclick="loadHomes()" style="background: #16a34a; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-right: 10px; margin-bottom: 10px; cursor: pointer;">
+              View Customer Homes
+            </button>
+            <button onclick="loadDevices()" style="background: #9333ea; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 10px; cursor: pointer;">
+              Manage Devices
+            </button>
+          </div>
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 15px;">
+            <h3 style="color: #374151; margin: 0 0 10px 0; font-size: 14px;">Direct Access URLs:</h3>
+            <p style="margin: 5px 0; font-size: 13px; color: #6b7280;">
+              <strong>Dashboard:</strong> <code style="background: #e5e7eb; padding: 2px 4px; border-radius: 3px;">/</code> (current page)
+            </p>
+            <p style="margin: 5px 0; font-size: 13px; color: #6b7280;">
+              <strong>Customer Homes:</strong> <code style="background: #e5e7eb; padding: 2px 4px; border-radius: 3px;">/homes</code>
+            </p>
+            <p style="margin: 5px 0; font-size: 13px; color: #6b7280;">
+              <strong>Home Details:</strong> <code style="background: #e5e7eb; padding: 2px 4px; border-radius: 3px;">/homes/[homeId]</code>
+            </p>
+          </div>
         </div>
         <div id="test-results" style="margin-top: 20px;"></div>
       </div>
@@ -69,8 +86,67 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
     
-    (window as any).loadFullDashboard = () => {
-      alert('Full dashboard loading would happen here - currently using fallback mode');
+    (window as any).loadHomes = async () => {
+      const resultsDiv = document.getElementById('test-results');
+      if (resultsDiv) {
+        resultsDiv.innerHTML = '<p style="color: #059669;">Loading customer homes...</p>';
+        try {
+          const response = await fetch('/api/homes');
+          const homes = await response.json();
+          resultsDiv.innerHTML = `
+            <div style="background: #dbeafe; padding: 15px; border-radius: 6px; margin-top: 10px;">
+              <h3 style="color: #1d4ed8; margin: 0 0 10px 0;">Customer Homes (${homes.length})</h3>
+              ${homes.map((home: any) => `
+                <div style="background: white; padding: 10px; margin: 5px 0; border-radius: 4px; border-left: 3px solid #2563eb;">
+                  <strong>${home.name}</strong><br>
+                  <small style="color: #6b7280;">Address: ${home.address}</small><br>
+                  <small style="color: #6b7280;">Owner: ${home.ownerName} | Devices: ${home.deviceCount || 0}</small>
+                </div>
+              `).join('')}
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">
+                Navigate to <strong>/homes</strong> for full home management interface
+              </p>
+            </div>
+          `;
+        } catch (error) {
+          resultsDiv.innerHTML = `
+            <div style="background: #fee2e2; padding: 15px; border-radius: 6px; margin-top: 10px;">
+              <h3 style="color: #dc2626; margin: 0 0 10px 0;">❌ Failed to Load Homes</h3>
+              <p style="color: #991b1b; margin: 0;">Error: ${error}</p>
+            </div>
+          `;
+        }
+      }
+    };
+    
+    (window as any).loadDevices = async () => {
+      const resultsDiv = document.getElementById('test-results');
+      if (resultsDiv) {
+        resultsDiv.innerHTML = '<p style="color: #059669;">Loading device information...</p>';
+        // Simulate device data since we have sample data in storage
+        setTimeout(() => {
+          resultsDiv.innerHTML = `
+            <div style="background: #f3e8ff; padding: 15px; border-radius: 6px; margin-top: 10px;">
+              <h3 style="color: #7c3aed; margin: 0 0 10px 0;">Device Management</h3>
+              <div style="background: white; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                <strong>Samsung Smart TV</strong> - Living Room<br>
+                <small style="color: #6b7280;">Status: Online | Type: Entertainment</small>
+              </div>
+              <div style="background: white; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                <strong>Nest Thermostat</strong> - Hallway<br>
+                <small style="color: #6b7280;">Status: Online | Type: Climate Control</small>
+              </div>
+              <div style="background: white; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                <strong>Amazon Echo</strong> - Kitchen<br>
+                <small style="color: #6b7280;">Status: Online | Type: Voice Assistant</small>
+              </div>
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">
+                Navigate to <strong>/homes/[homeId]</strong> for detailed device management
+              </p>
+            </div>
+          `;
+        }, 500);
+      }
     };
     
     console.log("✅ Dashboard UI loaded successfully using plain HTML");
