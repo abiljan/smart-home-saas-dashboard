@@ -152,16 +152,16 @@ export default function HomeDetailPage() {
                     </CardDescription>
                   </div>
                   <div className="flex space-x-2">
-                    <Link href={`/homes/${homeId}/devices/discover`}>
-                      <Button variant="outline" size="sm">
-                        <Wifi className="w-4 h-4 mr-2" />
-                        Discover Devices
+                    <Link href={`/homes/${homeId}/discover`}>
+                      <Button variant="outline" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <Camera className="w-4 h-4 mr-2" />
+                        Scan Devices
                       </Button>
                     </Link>
                     <Link href={`/homes/${homeId}/add-device`}>
-                      <Button size="sm">
+                      <Button size="sm" variant="outline">
                         <Plus className="w-4 h-4 mr-2" />
-                        Add Device
+                        Add Manually
                       </Button>
                     </Link>
                   </div>
