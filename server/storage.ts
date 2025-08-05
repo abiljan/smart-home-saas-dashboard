@@ -764,7 +764,8 @@ DatabaseStorage.prototype.createEmergencyAlert = async function(alertData: any) 
 
   if (!this.useDatabase) {
     if (!this.memStorage.has('emergencyAlerts')) this.memStorage.set('emergencyAlerts', new Map());
-    this.memStorage.get('emergencyAlerts').set(id, alert);
+    const alertsMap = this.memStorage.get('emergencyAlerts');
+    alertsMap.set(id, alert);
     return alert;
   }
   return alert;
