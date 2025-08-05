@@ -58,21 +58,21 @@ export function SystemHealthOverview({ healthData }: SystemHealthOverviewProps) 
     switch (service) {
       case "api":
         return [
-          { label: "Response Time", value: data.responseTime || "N/A" },
-          { label: "Uptime (24h)", value: data.uptime || "N/A" },
-          { label: "Requests/min", value: "142" }, // Static for now
+          { label: "Response Time", value: data.responseTime || "N/A", color: undefined },
+          { label: "Uptime (24h)", value: data.uptime || "N/A", color: undefined },
+          { label: "Requests/min", value: "142", color: undefined }, // Static for now
         ];
       case "database":
         return [
-          { label: "Query Time", value: data.responseTime || "45ms" },
-          { label: "Connections", value: "28/100" },
-          { label: "Storage Used", value: "2.4GB" },
+          { label: "Query Time", value: data.responseTime || "45ms", color: undefined },
+          { label: "Connections", value: "28/100", color: undefined },
+          { label: "Storage Used", value: "2.4GB", color: undefined },
         ];
       case "realtime":
         return [
-          { label: "Connections", value: data.details?.connections || "847" },
-          { label: "Messages/sec", value: data.details?.messagesPerSec || "23" },
-          { label: "Last Sync", value: "Now" },
+          { label: "Connections", value: data.details?.connections || "847", color: undefined },
+          { label: "Messages/sec", value: data.details?.messagesPerSec || "23", color: undefined },
+          { label: "Last Sync", value: "Now", color: undefined },
         ];
       case "external_services":
         return [

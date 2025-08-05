@@ -9,17 +9,53 @@ import { ActivityLog } from "@/components/activity-log";
 import { Bell, Home } from "lucide-react";
 import { useEffect, useState } from "react";
 
+interface DashboardData {
+  systemHealth: Array<{
+    service: string;
+    status: string;
+    responseTime?: string;
+    uptime?: string;
+    details?: any;
+  }>;
+  systemMetrics: Array<{
+    metricType: string;
+    value: string;
+    previousValue?: string;
+  }>;
+  criticalAlerts: Array<{
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    createdAt: string;
+    isDismissed: boolean;
+  }>;
+  recentActivity: Array<{
+    id: string;
+    eventType: string;
+    title: string;
+    description: string;
+    severity: string;
+    timestamp: string;
+  }>;
+  emergencySettings: Array<{
+    settingName: string;
+    isEnabled: boolean;
+  }>;
+  lastUpdated: string;
+}
+
 export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<string>("Just now");
   
-  const { data: dashboardData, refetch } = useQuery({
+  const { data: dashboardData, refetch } = useQuery<DashboardData>({
     queryKey: ["/api/dashboard-summary"],
     refetchInterval: 180000, // 3 minutes
   });
 
   // WebSocket connection for real-time updates
   const { isConnected } = useWebSocket({
-    onMessage: (data) => {
+    onMessage: (data: any) => {
       console.log("WebSocket message received:", data);
       // Refetch dashboard data when we receive updates
       refetch();
@@ -42,7 +78,7 @@ export default function Dashboard() {
   useEffect(() => {
     // Show notifications for critical alerts
     if (dashboardData?.criticalAlerts) {
-      dashboardData.criticalAlerts.forEach((alert: any) => {
+      dashboardData.criticalAlerts.forEach((alert) => {
         if (alert.type === "critical" && !alert.isDismissed) {
           showNotification(alert.title, {
             body: alert.message,
@@ -74,7 +110,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [dashboardData?.lastUpdated]);
 
-  const unreadAlertsCount = dashboardData?.criticalAlerts?.filter((alert: any) => !alert.isDismissed).length || 0;
+  const unreadAlertsCount = dashboardData?.criticalAlerts?.filter((alert) => !alert.isDismissed).length || 0;
 
   return (
     <div className="min-h-screen bg-slate-50">
