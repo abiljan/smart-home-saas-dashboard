@@ -62,6 +62,48 @@ export const emergencySettings = pgTable("emergency_settings", {
   lastModifiedAt: timestamp("last_modified_at").defaultNow(),
 });
 
+// Customer homes (renamed from existing aggregate table)
+export const customerHomes = pgTable("customer_homes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  address: text("address"),
+  primaryAdminId: varchar("primary_admin_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("active"), // 'active', 'inactive', 'suspended'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userHomes = pgTable("user_homes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  homeId: varchar("home_id").notNull().references(() => customerHomes.id),
+  role: varchar("role", { length: 50 }).notNull(), // 'primary_admin', 'secondary_admin', 'property_manager', 'guest'
+  invitedBy: varchar("invited_by").references(() => users.id),
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const devices = pgTable("devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  homeId: varchar("home_id").notNull().references(() => customerHomes.id),
+  name: varchar("name", { length: 200 }).notNull(),
+  manufacturer: varchar("manufacturer", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  roomLocation: varchar("room_location", { length: 100 }),
+  discoveryMethod: varchar("discovery_method", { length: 50 }), // 'wifi_scan', 'manual', 'barcode'
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const deviceDocumentation = pgTable("device_documentation", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").notNull().references(() => devices.id),
+  source: varchar("source", { length: 50 }).notNull(), // 'official_manual', 'user_notes', 'ai_generated'
+  content: text("content"),
+  contentType: varchar("content_type", { length: 50 }), // 'manual', 'quick_start', 'troubleshooting'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Legacy aggregate homes table for admin dashboard (keep existing data)
 export const homes = pgTable("homes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   homeIdentifier: text("home_identifier").notNull().unique(), // Anonymized identifier
@@ -104,6 +146,28 @@ export const insertEmergencySettingSchema = createInsertSchema(emergencySettings
   lastModifiedAt: true,
 });
 
+// Customer schema inserts
+export const insertCustomerHomeSchema = createInsertSchema(customerHomes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserHomeSchema = createInsertSchema(userHomes).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export const insertDeviceSchema = createInsertSchema(devices).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDeviceDocumentationSchema = createInsertSchema(deviceDocumentation).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Legacy admin schema
 export const insertHomeSchema = createInsertSchema(homes).omit({
   id: true,
   createdAt: true,
@@ -125,3 +189,13 @@ export type EmergencySetting = typeof emergencySettings.$inferSelect;
 export type InsertEmergencySetting = z.infer<typeof insertEmergencySettingSchema>;
 export type Home = typeof homes.$inferSelect;
 export type InsertHome = z.infer<typeof insertHomeSchema>;
+
+// Customer types
+export type CustomerHome = typeof customerHomes.$inferSelect;
+export type InsertCustomerHome = z.infer<typeof insertCustomerHomeSchema>;
+export type UserHome = typeof userHomes.$inferSelect;
+export type InsertUserHome = z.infer<typeof insertUserHomeSchema>;
+export type Device = typeof devices.$inferSelect;
+export type InsertDevice = z.infer<typeof insertDeviceSchema>;
+export type DeviceDocumentation = typeof deviceDocumentation.$inferSelect;
+export type InsertDeviceDocumentation = z.infer<typeof insertDeviceDocumentationSchema>;

@@ -13,13 +13,22 @@ import {
   type InsertEmergencySetting,
   type Home,
   type InsertHome,
+  type CustomerHome,
+  type InsertCustomerHome,
+  type Device,
+  type InsertDevice,
+  type DeviceDocumentation,
+  type InsertDeviceDocumentation,
   users,
   systemMetrics,
   systemHealth,
   criticalAlerts,
   activityLog,
   emergencySettings,
-  homes
+  homes,
+  customerHomes,
+  devices,
+  deviceDocumentation
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/neon-http";
@@ -64,10 +73,26 @@ export interface IStorage {
   getEmergencySettingByName(name: string): Promise<EmergencySetting | undefined>;
   updateEmergencySetting(name: string, setting: Partial<EmergencySetting>): Promise<EmergencySetting | undefined>;
 
-  // Homes
+  // Homes (legacy admin data)
   getHomes(): Promise<Home[]>;
   getActiveHomesCount(): Promise<number>;
   createHome(home: InsertHome): Promise<Home>;
+
+  // Customer Homes
+  getCustomerHomes(userId?: string): Promise<CustomerHome[]>;
+  getCustomerHome(id: string): Promise<CustomerHome | undefined>;
+  createCustomerHome(home: InsertCustomerHome): Promise<CustomerHome>;
+  updateCustomerHome(id: string, home: Partial<CustomerHome>): Promise<CustomerHome | undefined>;
+
+  // Devices
+  getDevices(homeId: string): Promise<Device[]>;
+  getDevice(id: string): Promise<Device | undefined>;
+  createDevice(device: InsertDevice): Promise<Device>;
+  updateDevice(id: string, device: Partial<Device>): Promise<Device | undefined>;
+
+  // Device Documentation
+  getDeviceDocumentation(deviceId: string): Promise<DeviceDocumentation[]>;
+  createDeviceDocumentation(doc: InsertDeviceDocumentation): Promise<DeviceDocumentation>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -76,37 +101,27 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     this.useDatabase = false; // Force memory storage for now
-    this.initMemoryStorage();
-    this.initializeMemoryData();
+    this.initializeSampleData();
   }
 
-  private initMemoryStorage() {
-    // Initialize in-memory storage as fallback
-    this.memStorage.set('users', new Map());
-    this.memStorage.set('systemMetrics', new Map());
-    this.memStorage.set('systemHealth', new Map());
-    this.memStorage.set('criticalAlerts', new Map());
+  private initializeSampleData() {
+    // Initialize in-memory storage collections
+    this.memStorage.set('users', []);
+    this.memStorage.set('systemMetrics', []);
+    this.memStorage.set('systemHealth', []);
+    this.memStorage.set('criticalAlerts', []);
     this.memStorage.set('activityLog', []);
-    this.memStorage.set('emergencySettings', new Map());
-    this.memStorage.set('homes', new Map());
-  }
+    this.memStorage.set('emergencySettings', []);
+    this.memStorage.set('homes', []);
+    this.memStorage.set('customerHomes', []);
+    this.memStorage.set('devices', []);
+    this.memStorage.set('deviceDocumentation', []);
 
-  private initializeMemoryData() {
-    // Create default admin user
-    const adminUser: User = {
-      id: randomUUID(),
-      username: "admin",
-      password: "password",
-      role: "superadmin",
-      createdAt: new Date(),
-    };
-    this.memStorage.get('users').set(adminUser.id, adminUser);
-
-    // Initialize emergency settings
+    // Create sample emergency settings with proper structure
     const emergencySettingsData = [
-      { settingName: "content_kill_switch", isEnabled: false, lastModifiedBy: adminUser.id },
-      { settingName: "maintenance_mode", isEnabled: false, lastModifiedBy: adminUser.id },
-      { settingName: "sound_alerts", isEnabled: true, lastModifiedBy: adminUser.id },
+      { settingName: "content_kill_switch", isEnabled: false },
+      { settingName: "maintenance_mode", isEnabled: false },
+      { settingName: "sound_alerts", isEnabled: true },
     ];
 
     emergencySettingsData.forEach(data => {
@@ -114,39 +129,39 @@ export class DatabaseStorage implements IStorage {
         id: randomUUID(),
         settingName: data.settingName,
         isEnabled: data.isEnabled,
-        lastModifiedBy: data.lastModifiedBy,
+        lastModifiedBy: null,
         lastModifiedAt: new Date(),
       };
-      this.memStorage.get('emergencySettings').set(data.settingName, setting);
+      this.memStorage.get('emergencySettings').push(setting);
     });
 
-    // Initialize system health
-    const healthServicesData = [
-      { service: "api", status: "operational", responseTime: "1.2s", uptime: "99.8%", details: {} },
-      { service: "database", status: "operational", responseTime: "45ms", uptime: "99.9%", details: {} },
-      { service: "realtime", status: "operational", responseTime: "23ms", uptime: "99.7%", details: { connections: 847, messagesPerSec: 23 } },
-      { service: "external_services", status: "degraded", responseTime: "2.1s", uptime: "98.5%", details: {} },
+    // Create sample system health data
+    const healthData = [
+      { service: "api", status: "operational", responseTime: "1.2s", uptime: "99.8%" },
+      { service: "database", status: "operational", responseTime: "45ms", uptime: "99.9%" },
+      { service: "realtime", status: "operational", responseTime: "23ms", uptime: "99.7%" },
+      { service: "external_services", status: "degraded", responseTime: "2.1s", uptime: "98.5%" },
     ];
 
-    healthServicesData.forEach(data => {
+    healthData.forEach(data => {
       const health: SystemHealth = {
         id: randomUUID(),
         service: data.service,
         status: data.status,
         responseTime: data.responseTime,
         uptime: data.uptime,
-        details: data.details,
+        details: {},
         timestamp: new Date(),
       };
-      this.memStorage.get('systemHealth').set(data.service, health);
+      this.memStorage.get('systemHealth').push(health);
     });
 
-    // Initialize system metrics
+    // Create sample system metrics
     const metricsData = [
-      { metricType: "device_discovery_rate", value: "87.3", previousValue: "90.0", metadata: {} },
-      { metricType: "mrr", value: "47892", previousValue: "42650", metadata: {} },
-      { metricType: "active_homes", value: "1247", previousValue: "1224", metadata: {} },
-      { metricType: "churn_rate", value: "2.1", previousValue: "2.4", metadata: {} },
+      { metricType: "device_discovery_rate", value: "87.3", previousValue: "90.0" },
+      { metricType: "mrr", value: "47892", previousValue: "42650" },
+      { metricType: "active_homes", value: "1247", previousValue: "1224" },
+      { metricType: "churn_rate", value: "2.1", previousValue: "2.4" },
     ];
 
     metricsData.forEach(data => {
@@ -155,13 +170,13 @@ export class DatabaseStorage implements IStorage {
         metricType: data.metricType,
         value: data.value,
         previousValue: data.previousValue,
-        metadata: data.metadata,
+        metadata: {},
         timestamp: new Date(),
       };
-      this.memStorage.get('systemMetrics').set(data.metricType, metric);
+      this.memStorage.get('systemMetrics').push(metric);
     });
 
-    // Add some sample activity logs
+    // Add sample activity logs
     const activityLogs = [
       {
         id: randomUUID(),
@@ -169,30 +184,92 @@ export class DatabaseStorage implements IStorage {
         title: "Device Discovery Rate Dropped",
         description: "Device discovery rate fell below 90% threshold",
         severity: "warning",
+        userId: null,
         metadata: {},
-        timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
+        timestamp: new Date(Date.now() - 5 * 60 * 1000),
       },
       {
         id: randomUUID(),
-        eventType: "user_action",
+        eventType: "user_action", 
         title: "Emergency Setting Updated",
         description: "Content kill switch was enabled by admin",
         severity: "critical",
+        userId: null,
         metadata: {},
-        timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
-      },
-      {
-        id: randomUUID(),
-        eventType: "system_info",
-        title: "System Health Check",
-        description: "All services are operational",
-        severity: "info",
-        metadata: {},
-        timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
+        timestamp: new Date(Date.now() - 15 * 60 * 1000),
       }
     ];
 
     this.memStorage.set('activityLog', activityLogs);
+
+    // Add sample customer homes and devices for testing
+    const sampleHomes = [
+      {
+        id: "home-1",
+        name: "Johnson Family Home",
+        address: "123 Maple Street, Springfield, IL",
+        primaryAdminId: "admin-1",
+        status: "active",
+        timezone: "America/Chicago",
+        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+      },
+      {
+        id: "home-2", 
+        name: "The Smith Residence",
+        address: "456 Oak Avenue, Denver, CO",
+        primaryAdminId: "admin-2",
+        status: "active",
+        timezone: "America/Denver",
+        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // 15 days ago
+      },
+    ];
+
+    this.memStorage.set('customerHomes', sampleHomes);
+
+    // Add sample devices for the homes
+    const sampleDevices = [
+      {
+        id: "device-1",
+        homeId: "home-1",
+        name: "Living Room TV",
+        manufacturer: "Samsung",
+        model: "QN65Q70T",
+        category: "entertainment",
+        roomLocation: "Living Room",
+        status: "active",
+        discoveryMethod: "wifi_scan",
+        metadata: { ipAddress: "192.168.1.100" },
+        createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: "device-2",
+        homeId: "home-1",
+        name: "Nest Thermostat",
+        manufacturer: "Google",
+        model: "Learning Thermostat",
+        category: "climate",
+        roomLocation: "Hallway",
+        status: "active",
+        discoveryMethod: "manual",
+        metadata: { temperature: 72 },
+        createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+      },
+      {
+        id: "device-3",
+        homeId: "home-2",
+        name: "Kitchen Echo",
+        manufacturer: "Amazon",
+        model: "Echo Dot 4th Gen",
+        category: "voice_assistant",
+        roomLocation: "Kitchen",
+        status: "active",
+        discoveryMethod: "manual",
+        metadata: {},
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      },
+    ];
+
+    this.memStorage.set('devices', sampleDevices);
   }
 
   private async initializeDefaultData() {
@@ -531,11 +608,136 @@ export class DatabaseStorage implements IStorage {
     };
 
     if (!this.useDatabase) {
-      this.memStorage.get('homes').set(id, home);
+      this.memStorage.get('homes').push(home);
       return home;
     }
     const [dbHome] = await db.insert(homes).values(insertHome).returning();
     return dbHome;
+  }
+
+  // Customer Homes methods
+  async getCustomerHomes(userId?: string): Promise<CustomerHome[]> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('customerHomes');
+    }
+    return await db.select().from(customerHomes);
+  }
+
+  async getCustomerHome(id: string): Promise<CustomerHome | undefined> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('customerHomes').find((home: CustomerHome) => home.id === id);
+    }
+    const result = await db.select().from(customerHomes).where(eq(customerHomes.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createCustomerHome(insertHome: InsertCustomerHome): Promise<CustomerHome> {
+    const id = randomUUID();
+    const home: CustomerHome = {
+      ...insertHome,
+      id,
+      status: insertHome.status || "active",
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('customerHomes').push(home);
+      return home;
+    }
+    const [dbHome] = await db.insert(customerHomes).values(insertHome).returning();
+    return dbHome;
+  }
+
+  async updateCustomerHome(id: string, updates: Partial<CustomerHome>): Promise<CustomerHome | undefined> {
+    if (!this.useDatabase) {
+      const homes = this.memStorage.get('customerHomes');
+      const index = homes.findIndex((home: CustomerHome) => home.id === id);
+      if (index !== -1) {
+        homes[index] = { ...homes[index], ...updates };
+        return homes[index];
+      }
+      return undefined;
+    }
+    const result = await db.update(customerHomes)
+      .set(updates)
+      .where(eq(customerHomes.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // Devices methods
+  async getDevices(homeId: string): Promise<Device[]> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('devices').filter((device: Device) => device.homeId === homeId);
+    }
+    return await db.select().from(devices).where(eq(devices.homeId, homeId));
+  }
+
+  async getDevice(id: string): Promise<Device | undefined> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('devices').find((device: Device) => device.id === id);
+    }
+    const result = await db.select().from(devices).where(eq(devices.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createDevice(insertDevice: InsertDevice): Promise<Device> {
+    const id = randomUUID();
+    const device: Device = {
+      ...insertDevice,
+      id,
+      status: insertDevice.status || "active",
+      metadata: insertDevice.metadata || {},
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('devices').push(device);
+      return device;
+    }
+    const [dbDevice] = await db.insert(devices).values(insertDevice).returning();
+    return dbDevice;
+  }
+
+  async updateDevice(id: string, updates: Partial<Device>): Promise<Device | undefined> {
+    if (!this.useDatabase) {
+      const deviceList = this.memStorage.get('devices');
+      const index = deviceList.findIndex((device: Device) => device.id === id);
+      if (index !== -1) {
+        deviceList[index] = { ...deviceList[index], ...updates };
+        return deviceList[index];
+      }
+      return undefined;
+    }
+    const result = await db.update(devices)
+      .set(updates)
+      .where(eq(devices.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // Device Documentation methods
+  async getDeviceDocumentation(deviceId: string): Promise<DeviceDocumentation[]> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('deviceDocumentation').filter((doc: DeviceDocumentation) => doc.deviceId === deviceId);
+    }
+    return await db.select().from(deviceDocumentation).where(eq(deviceDocumentation.deviceId, deviceId));
+  }
+
+  async createDeviceDocumentation(insertDoc: InsertDeviceDocumentation): Promise<DeviceDocumentation> {
+    const id = randomUUID();
+    const doc: DeviceDocumentation = {
+      ...insertDoc,
+      id,
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('deviceDocumentation').push(doc);
+      return doc;
+    }
+    const [dbDoc] = await db.insert(deviceDocumentation).values(insertDoc).returning();
+    return dbDoc;
   }
 }
 

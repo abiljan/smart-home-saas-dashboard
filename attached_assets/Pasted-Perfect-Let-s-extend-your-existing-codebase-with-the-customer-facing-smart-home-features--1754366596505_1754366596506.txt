@@ -1,0 +1,164 @@
+Perfect! Let's extend your existing codebase with the customer-facing smart home features. 
+
+## 🚀 **Replit Agent Prompt - Phase 2 Implementation**
+
+Give this **exact prompt** to Replit Agent:
+
+```
+EXTENDING SMART HOME SAAS - ADDING CORE CUSTOMER FEATURES
+
+CURRENT STATUS:
+- SaaS admin dashboard working at / ✅
+- Database, auth, WebSocket infrastructure ready ✅
+- Need to add customer-facing smart home features
+
+TASK: Implement Phase 2 - Core Smart Home Documentation System
+
+ADD NEW CUSTOMER ROUTES & PAGES:
+
+1. **Home Management** (/homes):
+   - List user's homes
+   - Create new home button
+   - Role-based access (Primary Admin, Secondary Admin, Property Manager)
+   - Home cards with device count, last activity
+
+2. **Individual Home Dashboard** (/homes/:homeId):
+   - Home overview with basic stats
+   - Quick device discovery button
+   - Recent activity feed
+   - Invite users section
+
+3. **Device Discovery** (/homes/:homeId/devices):
+   - WiFi network scanning interface (simulate for now)
+   - Manual device entry form (name, manufacturer, model, room)
+   - Device grid/list view with status
+   - "Find Manual" button per device
+
+4. **Guest Interface** (/homes/:homeId/guest):
+   - Simple device browser by room
+   - Prominent "Ask a Question" chat interface
+   - Emergency panic button (red, always visible)
+   - Clean, simple design for non-tech users
+
+5. **Device Details** (/homes/:homeId/devices/:deviceId):
+   - Device information display
+   - Manual/documentation viewer
+   - Custom notes section
+   - Usage instructions
+
+DATABASE EXTENSIONS (add to existing Drizzle schema):
+
+```sql
+-- Extend existing schema with customer tables
+CREATE TABLE homes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(200) NOT NULL,
+  address TEXT,
+  primary_admin_id UUID NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  status VARCHAR(20) DEFAULT 'active'
+);
+
+CREATE TABLE user_homes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  home_id UUID NOT NULL,
+  role VARCHAR(50) NOT NULL, -- 'primary_admin', 'secondary_admin', 'property_manager', 'guest'
+  invited_by UUID,
+  joined_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  home_id UUID NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  manufacturer VARCHAR(100),
+  model VARCHAR(100),
+  room_location VARCHAR(100),
+  discovery_method VARCHAR(50), -- 'wifi_scan', 'manual', 'barcode'
+  status VARCHAR(20) DEFAULT 'active',
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE device_documentation (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID NOT NULL,
+  source VARCHAR(50), -- 'official_manual', 'user_notes', 'ai_generated'
+  content TEXT,
+  content_type VARCHAR(50), -- 'manual', 'quick_start', 'troubleshooting'
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+API ENDPOINTS TO ADD:
+
+```typescript
+// Home management
+GET /api/homes - List user's homes
+POST /api/homes - Create new home
+GET /api/homes/:homeId - Get home details
+PUT /api/homes/:homeId - Update home
+
+// Device management  
+GET /api/homes/:homeId/devices - List devices in home
+POST /api/homes/:homeId/devices - Add new device
+GET /api/homes/:homeId/devices/:deviceId - Get device details
+PUT /api/homes/:homeId/devices/:deviceId - Update device
+
+// Device discovery
+POST /api/homes/:homeId/scan-wifi - Simulate WiFi device discovery
+POST /api/homes/:homeId/find-manual - Find manual for device
+
+// Guest features
+GET /api/homes/:homeId/guest-view - Simplified home view for guests
+POST /api/homes/:homeId/ask-question - AI chat for device questions
+POST /api/homes/:homeId/emergency - Emergency panic button
+```
+
+ONBOARDING FLOW (Update routing):
+- After login/signup → redirect to /homes
+- If no homes → show "Create your first home" wizard
+- After home creation → redirect to device discovery
+- Simple 3-step setup: Create home → Add device → Test question
+
+COMPONENTS TO CREATE:
+- HomeCard (displays home with stats)
+- DeviceDiscoveryWizard (step-by-step device setup)
+- DeviceCard (shows device info in grid)
+- GuestChat (simple Q&A interface)
+- EmergencyButton (prominent panic button)
+- HomeInvite (invite users to home)
+
+UI DESIGN:
+- Keep admin dashboard design but lighter/friendlier for customers
+- Use same shadcn/ui components for consistency
+- Focus on simplicity - guests need zero learning curve
+- Mobile-first for guest interface
+
+FOCUS PRIORITIES:
+1. Home creation and management
+2. Simple device entry (manual first)
+3. Basic documentation storage
+4. Guest Q&A interface (mock AI for now)
+5. Emergency panic button
+
+Please implement the complete customer-facing system with proper routing, database integration, and clean UI components.
+```
+
+## 🎯 **This Will Add:**
+
+✅ **Customer home management**  
+✅ **Device discovery and organization**  
+✅ **Guest interface for Q&A**  
+✅ **Emergency panic button**  
+✅ **Multi-tenant home system**  
+✅ **Proper user roles and permissions**  
+
+## 📋 **After Implementation:**
+
+You'll have **both systems**:
+- **Admin dashboard** at `/` (for SaaS operations)
+- **Customer app** at `/homes` (what customers actually use)
+
+**Ready to run this prompt in Replit Agent?** This will give you the complete smart home documentation system! 🏠

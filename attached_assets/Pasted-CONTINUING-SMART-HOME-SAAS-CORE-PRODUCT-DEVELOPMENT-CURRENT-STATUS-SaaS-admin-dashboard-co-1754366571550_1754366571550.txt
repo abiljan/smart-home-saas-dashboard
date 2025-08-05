@@ -1,0 +1,59 @@
+CONTINUING SMART HOME SAAS - CORE PRODUCT DEVELOPMENT
+
+CURRENT STATUS: 
+- SaaS admin dashboard complete ✅
+- Database and auth infrastructure ready ✅
+- Need to build the actual customer-facing smart home documentation system
+
+TASK: Implement Phase 2 from PRD - Device Discovery & Documentation System
+
+CREATE NEW CUSTOMER-FACING ROUTES:
+1. /homes - Home management for Primary/Secondary Admins
+2. /homes/:homeId/devices - Device discovery and management
+3. /homes/:homeId/guest - Guest interface for asking questions
+4. /homes/:homeId/emergency - Emergency panic button
+
+CORE FEATURES TO IMPLEMENT:
+
+1. **Home Management Page** (/homes):
+   - Create new home
+   - List existing homes for user
+   - Invite secondary admins/guests
+   - Home settings
+
+2. **Device Discovery System** (/homes/:homeId/devices):
+   - WiFi network scanning interface
+   - Manual device entry form
+   - Barcode scanning (web camera API)
+   - Device list with status
+
+3. **Documentation System**:
+   - Automatic manual fetching (ManualsOnline API)
+   - Document storage and caching
+   - Manual override/custom notes
+
+4. **Guest Interface** (/homes/:homeId/guest):
+   - Simple device browser
+   - "Ask a question" chat interface
+   - Emergency panic button (prominent)
+
+5. **Database Extensions**:
+   - homes table (name, address, primary_admin_id)
+   - devices table (home_id, name, model, discovery_method)
+   - documentation table (device_id, manual_content, source)
+   - user_homes table (user_id, home_id, role)
+
+ONBOARDING FLOW (Critical for MVP):
+1. User signs up → Auto-create first home
+2. "Let's discover your first device" → WiFi scan OR manual entry
+3. System finds manual automatically
+4. "Ask a question about this device" → Test AI response
+5. "Great! Invite your first guest/family member"
+
+USE EXISTING INFRASTRUCTURE:
+- Current database (extend with new tables)
+- TanStack Query for data fetching
+- shadcn/ui components
+- WebSocket for real-time device discovery
+
+FOCUS: Simple, working device discovery and Q&A system. This is what customers pay for!

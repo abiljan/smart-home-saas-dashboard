@@ -6,7 +6,10 @@ import {
   insertCriticalAlertSchema,
   insertActivityLogSchema,
   insertSystemMetricSchema,
-  insertSystemHealthSchema 
+  insertSystemHealthSchema,
+  insertCustomerHomeSchema,
+  insertDeviceSchema,
+  insertDeviceDocumentationSchema
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -262,6 +265,274 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error in real-time update simulation:', error);
     }
   }, 180000); // 3 minutes
+
+  // Customer Home Management API Routes
+  app.get("/api/homes", async (req, res) => {
+    try {
+      const homes = await storage.getCustomerHomes();
+      res.json(homes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch homes" });
+    }
+  });
+
+  app.get("/api/homes/:homeId", async (req, res) => {
+    try {
+      const home = await storage.getCustomerHome(req.params.homeId);
+      if (!home) {
+        return res.status(404).json({ message: "Home not found" });
+      }
+      res.json(home);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch home" });
+    }
+  });
+
+  app.post("/api/homes", async (req, res) => {
+    try {
+      const validatedData = insertCustomerHomeSchema.parse({
+        ...req.body,
+        primaryAdminId: "default-admin" // In a real app, this would come from auth
+      });
+      const home = await storage.createCustomerHome(validatedData);
+      
+      // Log home creation
+      await storage.createActivityLog({
+        eventType: "user_action",
+        title: "Home created",
+        description: `New home "${home.name}" was created`,
+        severity: "info",
+        userId: null,
+        metadata: { homeId: home.id },
+      });
+
+      res.json(home);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create home" });
+    }
+  });
+
+  // Device Management API Routes
+  app.get("/api/homes/:homeId/devices", async (req, res) => {
+    try {
+      const devices = await storage.getDevices(req.params.homeId);
+      res.json(devices);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch devices" });
+    }
+  });
+
+  app.get("/api/homes/:homeId/devices/:deviceId", async (req, res) => {
+    try {
+      const device = await storage.getDevice(req.params.deviceId);
+      if (!device || device.homeId !== req.params.homeId) {
+        return res.status(404).json({ message: "Device not found" });
+      }
+      res.json(device);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch device" });
+    }
+  });
+
+  app.post("/api/homes/:homeId/devices", async (req, res) => {
+    try {
+      const validatedData = insertDeviceSchema.parse({
+        ...req.body,
+        homeId: req.params.homeId
+      });
+      const device = await storage.createDevice(validatedData);
+      
+      // Log device creation
+      await storage.createActivityLog({
+        eventType: "user_action",
+        title: "Device added",
+        description: `Device "${device.name}" was added to home`,
+        severity: "info",
+        userId: null,
+        metadata: { homeId: req.params.homeId, deviceId: device.id },
+      });
+
+      broadcast({ type: 'device_added', data: device });
+      res.json(device);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to create device" });
+    }
+  });
+
+  // Device Discovery Simulation
+  app.post("/api/homes/:homeId/scan-wifi", async (req, res) => {
+    try {
+      // Simulate WiFi device discovery
+      const mockDevices = [
+        { name: "Smart TV", manufacturer: "Samsung", model: "QN65Q70T", roomLocation: "Living Room" },
+        { name: "WiFi Router", manufacturer: "Netgear", model: "AX6000", roomLocation: "Office" },
+        { name: "Smart Thermostat", manufacturer: "Nest", model: "Learning", roomLocation: "Hallway" },
+        { name: "Security Camera", manufacturer: "Ring", model: "Stick Up Cam", roomLocation: "Front Door" },
+      ];
+
+      // Randomly return 1-3 devices
+      const discoveredDevices = mockDevices
+        .sort(() => 0.5 - Math.random())
+        .slice(0, Math.floor(Math.random() * 3) + 1);
+
+      res.json({ 
+        discovered: discoveredDevices,
+        scanTime: new Date(),
+        method: "wifi_scan"
+      });
+    } catch (error) {
+      res.status(500).json({ message: "WiFi scan failed" });
+    }
+  });
+
+  // Find Manual Simulation
+  app.post("/api/homes/:homeId/find-manual", async (req, res) => {
+    try {
+      const { manufacturer, model } = req.body;
+      
+      // Simulate manual lookup
+      const mockManuals = {
+        "Samsung QN65Q70T": "https://example.com/samsung-tv-manual.pdf",
+        "Nest Learning": "https://example.com/nest-thermostat-manual.pdf",
+        "Ring Stick Up Cam": "https://example.com/ring-camera-manual.pdf",
+      };
+
+      const manualKey = `${manufacturer} ${model}`;
+      const manualUrl = mockManuals[manualKey as keyof typeof mockManuals];
+
+      if (manualUrl) {
+        res.json({
+          found: true,
+          manualUrl,
+          source: "ManualsOnline",
+          title: `${manufacturer} ${model} User Manual`,
+        });
+      } else {
+        res.json({
+          found: false,
+          message: "Manual not found in database",
+          suggestion: "Try adding manual information manually",
+        });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Manual lookup failed" });
+    }
+  });
+
+  // Guest Interface API
+  app.get("/api/homes/:homeId/guest-view", async (req, res) => {
+    try {
+      const home = await storage.getCustomerHome(req.params.homeId);
+      const devices = await storage.getDevices(req.params.homeId);
+      
+      if (!home) {
+        return res.status(404).json({ message: "Home not found" });
+      }
+
+      // Return simplified view for guests
+      const guestView = {
+        homeName: home.name,
+        deviceCount: devices.length,
+        devicesByRoom: devices.reduce((acc, device) => {
+          const room = device.roomLocation || "Unknown Room";
+          if (!acc[room]) acc[room] = [];
+          acc[room].push({
+            id: device.id,
+            name: device.name,
+            manufacturer: device.manufacturer,
+            model: device.model,
+          });
+          return acc;
+        }, {} as Record<string, any[]>),
+      };
+
+      res.json(guestView);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch guest view" });
+    }
+  });
+
+  // Guest Chat/Question API (Mock AI Response)
+  app.post("/api/homes/:homeId/ask-question", async (req, res) => {
+    try {
+      const { question, deviceId } = req.body;
+      
+      // Mock AI responses based on common questions
+      const responses = {
+        "how do I turn this on": "To turn on this device, locate the power button (usually marked with a ⏻ symbol) and press it once. If it doesn't respond, check that it's plugged in and the outlet is working.",
+        "not working": "If your device isn't working, try these steps: 1) Check the power connection, 2) Ensure it's properly plugged in, 3) Try unplugging for 30 seconds and plugging back in, 4) Check if there are any error lights or displays.",
+        "setup": "For initial setup, please refer to the quick start guide that came with your device. Most smart devices require connecting to your WiFi network through their mobile app.",
+        "reset": "To reset most devices: 1) Look for a small reset button (often recessed), 2) Hold it down for 10-15 seconds while powered on, 3) The device should restart and return to factory settings.",
+      };
+
+      // Simple keyword matching for demo
+      const lowerQuestion = question.toLowerCase();
+      let response = "I'd be happy to help! Could you provide more specific details about the issue you're experiencing?";
+
+      for (const [keyword, answer] of Object.entries(responses)) {
+        if (lowerQuestion.includes(keyword)) {
+          response = answer;
+          break;
+        }
+      }
+
+      // Log the question for analytics
+      await storage.createActivityLog({
+        eventType: "guest_question",
+        title: "Guest asked question",
+        description: `Question about device: "${question}"`,
+        severity: "info",
+        userId: null,
+        metadata: { homeId: req.params.homeId, deviceId, question },
+      });
+
+      res.json({
+        question,
+        response,
+        timestamp: new Date(),
+        helpful: null, // Guest can rate if helpful
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to process question" });
+    }
+  });
+
+  // Emergency Panic Button
+  app.post("/api/homes/:homeId/emergency", async (req, res) => {
+    try {
+      const { type, message } = req.body;
+      
+      // Create critical alert for emergency
+      const alert = await storage.createCriticalAlert({
+        type: "critical",
+        title: "Emergency Alert",
+        message: message || "Emergency panic button was pressed",
+        source: `Home ${req.params.homeId}`,
+        metadata: { homeId: req.params.homeId, emergencyType: type },
+      });
+
+      // Log emergency activation
+      await storage.createActivityLog({
+        eventType: "emergency_control",
+        title: "Emergency button activated",
+        description: `Emergency panic button pressed: ${type || 'general'}`,
+        severity: "critical",
+        userId: null,
+        metadata: { homeId: req.params.homeId, alertId: alert.id },
+      });
+
+      broadcast({ type: 'emergency_alert', data: alert });
+      
+      res.json({
+        success: true,
+        alertId: alert.id,
+        message: "Emergency services have been notified",
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Emergency alert failed" });
+    }
+  });
 
   return httpServer;
 }

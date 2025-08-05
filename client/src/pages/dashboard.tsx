@@ -6,8 +6,11 @@ import { SystemHealthOverview } from "@/components/system-health-overview";
 import { KeyMetricsDashboard } from "@/components/key-metrics-dashboard";
 import { EmergencyControls } from "@/components/emergency-controls";
 import { ActivityLog } from "@/components/activity-log";
-import { Bell, Home } from "lucide-react";
+import { Bell, Home, Building, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface DashboardData {
   systemHealth: Array<{
@@ -146,6 +149,14 @@ export default function Dashboard() {
                   </span>
                 )}
               </button>
+              
+              {/* Customer Homes Link */}
+              <Link href="/homes">
+                <Button variant="outline" size="sm">
+                  <Building className="h-4 w-4 mr-2" />
+                  Customer Homes
+                </Button>
+              </Link>
               
               {/* User Profile */}
               <div className="flex items-center space-x-3">
