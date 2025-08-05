@@ -588,7 +588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         homeId,
         question,
         answer: answer.answer,
-        confidence: answer.confidence,
+        confidence: answer.confidence.toString(),
         context: context || {},
         sources: answer.sources,
         followUpSuggestions: answer.followUpSuggestions

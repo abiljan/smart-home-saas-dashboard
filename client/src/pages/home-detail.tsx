@@ -184,16 +184,10 @@ export default function HomeDetailPage() {
                       Start by discovering devices on your network or add them manually.
                     </p>
                     <div className="flex justify-center space-x-2">
-                      <Link href={`/homes/${homeId}/devices/discover`}>
-                        <Button variant="outline" size="sm">
-                          <Wifi className="w-4 h-4 mr-2" />
-                          Discover Devices
-                        </Button>
-                      </Link>
-                      <Link href={`/homes/${homeId}/devices`}>
+                      <Link href={`/homes/${homeId}/add-device`}>
                         <Button size="sm">
                           <Plus className="w-4 h-4 mr-2" />
-                          Add Manually
+                          Add Device
                         </Button>
                       </Link>
                     </div>
