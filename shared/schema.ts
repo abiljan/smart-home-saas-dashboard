@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, decimal, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, decimal, boolean, jsonb, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -199,3 +199,49 @@ export type Device = typeof devices.$inferSelect;
 export type InsertDevice = z.infer<typeof insertDeviceSchema>;
 export type DeviceDocumentation = typeof deviceDocumentation.$inferSelect;
 export type InsertDeviceDocumentation = z.infer<typeof insertDeviceDocumentationSchema>;
+
+// New emergency and AI chat tables
+export const emergencyAlerts = pgTable('emergency_alerts', {
+  id: text('id').primaryKey(),
+  homeId: text('home_id').references(() => customerHomes.id).notNull(),
+  message: text('message').notNull(),
+  location: text('location'),
+  urgency: text('urgency').notNull().default('medium'), // low, medium, high, critical
+  guestContact: text('guest_contact'),
+  status: text('status').notNull().default('active'), // active, acknowledged, resolved
+  acknowledgedAt: timestamp('acknowledged_at'),
+  resolvedAt: timestamp('resolved_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const chatMessages = pgTable('chat_messages', {
+  id: text('id').primaryKey(),
+  homeId: text('home_id').references(() => customerHomes.id).notNull(),
+  question: text('question').notNull(),
+  answer: text('answer').notNull(),
+  confidence: text('confidence'),
+  context: json('context').default({}),
+  sources: json('sources').default([]),
+  followUpSuggestions: json('follow_up_suggestions').default([]),
+  rating: integer('rating'), // 1-5 stars
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Additional insert schemas
+export const insertEmergencyAlertSchema = createInsertSchema(emergencyAlerts).omit({
+  id: true,
+  createdAt: true,
+  acknowledgedAt: true,
+  resolvedAt: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Additional types
+export type EmergencyAlert = typeof emergencyAlerts.$inferSelect;
+export type InsertEmergencyAlert = z.infer<typeof insertEmergencyAlertSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;

@@ -1,0 +1,62 @@
+SMART HOME SAAS - IMPLEMENT MISSING CORE FUNCTIONALITY
+
+CURRENT STATUS:
+- Home management UI working ✅
+- Device discovery interface complete ✅
+- Need to implement emergency system and settings ✅
+
+IMPLEMENT THESE CRITICAL FEATURES:
+
+1. **Emergency Panel** (/homes/:homeId/emergency):
+   - Large red "EMERGENCY" button (always visible)
+   - Emergency contact form (sends to Primary Admin)
+   - One-tap contact with location context
+   - Auto-escalation if no response in 5 minutes
+   - Works offline with cached contact info
+
+2. **Settings Page** (/homes/:homeId/settings):
+   - Home information (name, address)
+   - Member management (invite/remove users)
+   - Emergency contacts setup
+   - Notification preferences
+   - Home sharing settings
+
+3. **Guest View** (/homes/:homeId/guest):
+   - Simplified device browser
+   - "Ask a Question" chat interface
+   - Emergency button (prominent)
+   - Clean design for non-tech users
+
+4. **Device Documentation System**:
+   - Click device → show manual/instructions
+   - "Find Manual" automation (API integration)
+   - Custom notes section
+   - Usage instructions
+
+5. **AI Question System** (Core MVP Feature):
+   - Natural language Q&A about devices
+   - Context-aware responses (device + location)
+   - "How do I turn on the Living Room TV?"
+   - Rate responses for learning
+
+BACKEND API ENDPOINTS TO ADD:
+
+```typescript
+// Emergency system
+POST /api/homes/:homeId/emergency - Send emergency alert
+GET /api/homes/:homeId/emergency-contacts - Get contact info
+
+// Settings
+GET /api/homes/:homeId/settings - Get home settings
+PUT /api/homes/:homeId/settings - Update home settings
+POST /api/homes/:homeId/invite - Invite user to home
+DELETE /api/homes/:homeId/members/:userId - Remove member
+
+// Device documentation
+GET /api/devices/:deviceId/manual - Get device manual
+POST /api/devices/:deviceId/find-manual - Auto-find manual
+PUT /api/devices/:deviceId/notes - Update custom notes
+
+// AI Q&A system
+POST /api/homes/:homeId/ask - Ask question about devices
+GET /api/homes/:homeId/chat-history - Get previous Q&A

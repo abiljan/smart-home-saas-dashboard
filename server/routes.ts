@@ -534,5 +534,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Emergency system endpoints
+  app.post('/api/homes/:homeId/emergency', async (req, res) => {
+    try {
+      const { homeId } = req.params;
+      const { message, location, urgency = 'high', guestContact } = req.body;
+      
+      const alert = await storage.createEmergencyAlert({
+        homeId,
+        message,
+        location,
+        urgency,
+        guestContact
+      });
+      
+      // Log emergency for tracking
+      await storage.logActivity({
+        homeId,
+        action: 'emergency_alert',
+        description: `Emergency alert: ${message} at ${location}`,
+        severity: 'critical',
+        metadata: { urgency, location, guestContact }
+      });
+      
+      console.log(`🚨 EMERGENCY ALERT for Home ${homeId}: ${message} at ${location}`);
+      res.json(alert);
+    } catch (error) {
+      console.error('Error creating emergency alert:', error);
+      res.status(500).json({ error: 'Failed to create emergency alert' });
+    }
+  });
+
+  app.get('/api/homes/:homeId/emergency-alerts', async (req, res) => {
+    try {
+      const alerts = await storage.getEmergencyAlerts(req.params.homeId);
+      res.json(alerts);
+    } catch (error) {
+      console.error('Error fetching emergency alerts:', error);
+      res.status(500).json({ error: 'Failed to fetch emergency alerts' });
+    }
+  });
+
+  // AI Q&A system endpoints
+  app.post('/api/homes/:homeId/ask', async (req, res) => {
+    try {
+      const { homeId } = req.params;
+      const { question, context } = req.body;
+      
+      // Generate AI response based on device context
+      const answer = await generateAIResponse(question, context, homeId);
+      
+      const chatMessage = await storage.createChatMessage({
+        homeId,
+        question,
+        answer: answer.answer,
+        confidence: answer.confidence,
+        context: context || {},
+        sources: answer.sources,
+        followUpSuggestions: answer.followUpSuggestions
+      });
+      
+      res.json(chatMessage);
+    } catch (error) {
+      console.error('Error processing AI question:', error);
+      res.status(500).json({ error: 'Failed to process question' });
+    }
+  });
+
+  app.get('/api/homes/:homeId/chat-history', async (req, res) => {
+    try {
+      const history = await storage.getChatHistory(req.params.homeId);
+      res.json(history);
+    } catch (error) {
+      console.error('Error fetching chat history:', error);
+      res.status(500).json({ error: 'Failed to fetch chat history' });
+    }
+  });
+
+  // Device documentation endpoints
+  app.get('/api/devices/:deviceId/manual', async (req, res) => {
+    try {
+      const device = await storage.getDevice(req.params.deviceId);
+      if (!device) {
+        return res.status(404).json({ error: 'Device not found' });
+      }
+      
+      // Simulate manual finding based on device info
+      const manual = {
+        id: `manual-${device.id}`,
+        deviceId: device.id,
+        title: `${device.manufacturer} ${device.model} User Manual`,
+        manufacturer: device.manufacturer,
+        model: device.model,
+        instructions: getDeviceInstructions(device),
+        customNotes: device.metadata?.customNotes || ''
+      };
+      
+      res.json(manual);
+    } catch (error) {
+      console.error('Error fetching device manual:', error);
+      res.status(500).json({ error: 'Failed to fetch device manual' });
+    }
+  });
+
   return httpServer;
+}
+
+// AI Response Generation Function
+async function generateAIResponse(question: string, context: any, homeId: string) {
+  // Simulate AI response based on common smart home questions
+  const commonResponses: Record<string, any> = {
+    "turn on": {
+      answer: "To turn on this device: 1. Locate the power button or use the remote control 2. If it's a smart device, you can also use voice commands like 'Hey Google' or 'Alexa' 3. Check if the device is plugged in properly",
+      confidence: 0.85,
+      sources: ["Device Manual", "Smart Home Guide"],
+      followUpSuggestions: ["How to adjust settings", "Voice command options", "Troubleshooting"]
+    },
+    "not working": {
+      answer: "If your device isn't working: 1. Check power connection 2. Ensure WiFi connectivity 3. Try restarting the device 4. Check for app updates 5. Review device manual for specific troubleshooting",
+      confidence: 0.90,
+      sources: ["Troubleshooting Guide", "Device Manual"],
+      followUpSuggestions: ["Reset instructions", "Contact support", "Check warranty"]
+    },
+    "connect": {
+      answer: "To connect your device: 1. Enable WiFi on the device 2. Open the companion app 3. Follow setup wizard 4. Enter your WiFi password 5. Complete pairing process",
+      confidence: 0.80,
+      sources: ["Setup Guide", "WiFi Instructions"],
+      followUpSuggestions: ["WiFi troubleshooting", "App download", "Pairing issues"]
+    }
+  };
+
+  // Find matching response based on keywords
+  const questionLower = question.toLowerCase();
+  let response = {
+    answer: "I'd be happy to help! Could you provide more specific details about your question? I can assist with device setup, troubleshooting, and usage instructions.",
+    confidence: 0.60,
+    sources: ["General Smart Home Guide"],
+    followUpSuggestions: ["Device setup", "Troubleshooting", "User manual"]
+  };
+
+  for (const [keyword, keywordResponse] of Object.entries(commonResponses)) {
+    if (questionLower.includes(keyword)) {
+      response = keywordResponse;
+      break;
+    }
+  }
+
+  // Enhance response with context information
+  if (context.room) {
+    response.answer = `For your ${context.room}: ${response.answer}`;
+  }
+  
+  if (context.devices && context.devices.length > 0) {
+    response.answer += ` I can see you have: ${context.devices.join(', ')} in this area.`;
+  }
+
+  return response;
+}
+
+// Device Instructions Helper
+function getDeviceInstructions(device: any) {
+  const instructions: Record<string, string> = {
+    "Samsung": "Samsung Smart TV: Use the Samsung remote or SmartThings app. Press Power button to turn on. Navigate with directional pad. Access Smart Hub with Home button.",
+    "Nest": "Nest Thermostat: Rotate the ring to adjust temperature. Press to access menu. Use Nest app for remote control and scheduling.",
+    "Amazon": "Amazon Echo: Say 'Alexa' followed by your command. Use Alexa app for setup and settings. LED ring shows status - blue for listening, red for muted.",
+    "Philips": "Philips Hue: Control via Philips Hue app or voice commands. Dimmer switch rotates for brightness, press for on/off.",
+    "Ring": "Ring Doorbell: Motion alerts sent to phone. Two-way audio via Ring app. Live view available 24/7. Check battery level regularly."
+  };
+
+  const manufacturer = device.manufacturer || "";
+  for (const [brand, instruction] of Object.entries(instructions)) {
+    if (manufacturer.includes(brand)) {
+      return instruction;
+    }
+  }
+
+  return `${device.name}: Please refer to the device manual or manufacturer website for specific instructions. Common actions include power on/off, basic settings adjustment, and app connectivity.`;
 }

@@ -7,6 +7,8 @@ import Dashboard from "@/pages/dashboard";
 import HomesPage from "@/pages/homes";
 import HomeDetailPage from "@/pages/home-detail";
 import DevicesPage from "@/pages/devices";
+import EmergencyPage from "@/pages/emergency";
+import GuestPage from "@/pages/guest";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,6 +17,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/homes" component={HomesPage} />
       <Route path="/homes/:homeId" component={HomeDetailPage} />
+      <Route path="/homes/:homeId/emergency" component={EmergencyPage} />
+      <Route path="/homes/:homeId/guest" component={GuestPage} />
       <Route path="/devices" component={DevicesPage} />
       <Route component={NotFound} />
     </Switch>

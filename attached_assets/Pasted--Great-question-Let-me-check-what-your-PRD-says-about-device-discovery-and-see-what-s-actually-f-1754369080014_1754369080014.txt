@@ -1,0 +1,129 @@
+**Great question!** Let me check what your PRD says about device discovery and see what's actually feasible for MVP.
+
+## 📋 **From Your Original PRD - Device Discovery Methods:**
+
+### **What the PRD Specifies:**
+1. **WiFi Network Scanning** - Automatic device detection
+2. **Barcode Scanning** - Mobile app integration  
+3. **Video Identification** - Google Vision API for device recognition
+4. **Manual Entry** - Fallback for unsupported devices
+
+### **Reality Check - What's Actually Feasible:**
+
+#### **❌ Complex/Expensive for MVP:**
+- **WiFi Scanning** - Requires network admin access, complex to implement
+- **Video ID** - Google Vision API costs, accuracy issues
+- **Barcode Scanning** - Need mobile app, UPC database APIs
+
+#### **✅ Simple/Effective for MVP:**
+- **Manual Entry** - Always works, zero complexity
+- **Smart Manual Entry** - Pre-populated device database
+- **Guided Discovery** - Step-by-step wizard
+
+## 🎯 **Recommended MVP Approach: Smart Manual Entry**
+
+### **Simple Device Discovery Flow:**
+
+```
+1. "Add Device" button
+2. "What type of device?" (TV, Thermostat, Speaker, etc.)
+3. "What brand?" (Samsung, Google, Apple, etc.) 
+4. "Where is it located?" (Living Room, Kitchen, etc.)
+5. Auto-find manual based on brand + type
+6. "Does this look right?" (show device photo + manual)
+7. Save device with documentation
+```
+
+## 🚀 **Replit Agent Prompt - Simple Device Discovery:**
+
+```
+SMART HOME SAAS - IMPLEMENT SIMPLE DEVICE DISCOVERY
+
+CURRENT STATUS: Device UI exists but need actual discovery implementation
+
+TASK: Build practical device discovery for MVP (manual entry with smart assistance)
+
+IMPLEMENT SIMPLE DEVICE DISCOVERY:
+
+1. **Device Discovery Wizard** (replace complex WiFi scanning):
+   - Step 1: Device Category (dropdown: TV, Thermostat, Speaker, etc.)
+   - Step 2: Brand Selection (Samsung, Google, Apple, Nest, etc.)
+   - Step 3: Model (optional text input)
+   - Step 4: Room Location (Living Room, Kitchen, Bedroom, etc.)
+   - Step 5: Custom Name (optional: "Living Room TV")
+
+2. **Device Database** (pre-populated common devices):
+```javascript
+const commonDevices = {
+  "TV": {
+    brands: ["Samsung", "LG", "Sony", "TCL", "Roku"],
+    commonModels: {
+      "Samsung": ["QN65Q70T", "UN55TU7000", "QN75Q80T"],
+      "LG": ["OLED55C1PUB", "55UP7000PUA"]
+    }
+  },
+  "Thermostat": {
+    brands: ["Nest", "Honeywell", "Ecobee"],
+    commonModels: {
+      "Nest": ["Learning Thermostat", "Thermostat E"],
+      "Honeywell": ["T6 Pro", "T9"]
+    }
+  }
+  // Add more categories
+}
+```
+
+3. **Auto-Manual Finding** (simple approach):
+   - Use device brand + type to search manual databases
+   - ManualsOnline API integration
+   - Fallback to manufacturer websites
+   - Cache found manuals for reuse
+
+4. **Manual Entry API**:
+```typescript
+POST /api/homes/:homeId/devices
+{
+  "name": "Living Room TV",
+  "category": "TV", 
+  "brand": "Samsung",
+  "model": "QN65Q70T",
+  "room": "Living Room",
+  "discoveryMethod": "manual"
+}
+
+// Auto-trigger manual search
+POST /api/devices/:deviceId/find-manual
+// Returns: manual PDF, quick start guide, troubleshooting
+```
+
+5. **Device Discovery UI Flow**:
+   - Replace "Discover Devices" with "Add Device" wizard
+   - 5-step form with smart defaults
+   - Preview device card before saving
+   - Auto-search for manuals after creation
+
+6. **Common Device Templates**:
+   - Pre-built device configs for popular items
+   - "Samsung Smart TV" template with common instructions
+   - "Nest Thermostat" with setup guides
+   - Generic templates for unknown devices
+
+FOCUS: Make device entry so simple that anyone can add a device in under 2 minutes with useful documentation automatically found.
+
+This replaces complex WiFi scanning with practical manual entry that actually works.
+```
+
+## 💡 **Why This Approach Works:**
+
+✅ **Always works** - No network dependencies  
+✅ **Fast to implement** - No complex APIs  
+✅ **Great UX** - Guided, simple process  
+✅ **Scalable** - Add more device types over time  
+✅ **Practical** - Solves real user needs  
+
+## 🤔 **Future Enhancements (Post-MVP):**
+- WiFi scanning for tech-savvy users
+- Barcode scanning via mobile app
+- Photo recognition for device identification
+
+**Should we implement this simple but effective device discovery approach?** 🏠

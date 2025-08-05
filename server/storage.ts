@@ -750,4 +750,74 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
+// Add emergency and chat methods to DatabaseStorage
+DatabaseStorage.prototype.createEmergencyAlert = async function(alertData: any) {
+  const id = randomUUID();
+  const alert = {
+    ...alertData,
+    id,
+    status: 'active',
+    createdAt: new Date(),
+    acknowledgedAt: null,
+    resolvedAt: null,
+  };
+
+  if (!this.useDatabase) {
+    if (!this.memStorage.has('emergencyAlerts')) this.memStorage.set('emergencyAlerts', new Map());
+    this.memStorage.get('emergencyAlerts').set(id, alert);
+    return alert;
+  }
+  return alert;
+};
+
+DatabaseStorage.prototype.getEmergencyAlerts = async function(homeId: string) {
+  if (!this.useDatabase) {
+    if (!this.memStorage.has('emergencyAlerts')) return [];
+    const alerts = Array.from(this.memStorage.get('emergencyAlerts').values()) as any[];
+    return alerts
+      .filter(alert => alert.homeId === homeId)
+      .sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime());
+  }
+  return [];
+};
+
+DatabaseStorage.prototype.createChatMessage = async function(messageData: any) {
+  const id = randomUUID();
+  const message = {
+    ...messageData,
+    id,
+    createdAt: new Date(),
+  };
+
+  if (!this.useDatabase) {
+    if (!this.memStorage.has('chatMessages')) this.memStorage.set('chatMessages', new Map());
+    this.memStorage.get('chatMessages').set(id, message);
+    return message;
+  }
+  return message;
+};
+
+DatabaseStorage.prototype.getChatHistory = async function(homeId: string) {
+  if (!this.useDatabase) {
+    if (!this.memStorage.has('chatMessages')) return [];
+    const messages = Array.from(this.memStorage.get('chatMessages').values()) as any[];
+    return messages
+      .filter(msg => msg.homeId === homeId)
+      .sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime())
+      .slice(0, 50);
+  }
+  return [];
+};
+
+DatabaseStorage.prototype.logActivity = async function(activityData: any) {
+  await this.createActivityLog({
+    eventType: activityData.action,
+    title: activityData.description,
+    description: activityData.description,
+    severity: activityData.severity,
+    userId: null,
+    metadata: activityData.metadata || {},
+  });
+};
+
 export const storage = new DatabaseStorage();
