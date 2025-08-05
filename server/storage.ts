@@ -339,7 +339,8 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     if (!this.useDatabase) {
-      return Array.from(this.memStorage.get('users').values()).find((user: User) => user.username === username);
+      const users = Array.from(this.memStorage.get('users').values()) as User[];
+      return users.find((user: User) => user.username === username);
     }
     const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
     return result[0];
@@ -365,7 +366,7 @@ export class DatabaseStorage implements IStorage {
   // System Metrics methods
   async getSystemMetrics(): Promise<SystemMetric[]> {
     if (!this.useDatabase) {
-      return Array.from(this.memStorage.get('systemMetrics').values());
+      return Array.from(this.memStorage.get('systemMetrics').values()) as SystemMetric[];
     }
     return await db.select().from(systemMetrics);
   }
@@ -397,7 +398,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateSystemMetric(id: string, updates: Partial<SystemMetric>): Promise<SystemMetric | undefined> {
     if (!this.useDatabase) {
-      const metric = Array.from(this.memStorage.get('systemMetrics').values()).find((m: SystemMetric) => m.id === id);
+      const metrics = Array.from(this.memStorage.get('systemMetrics').values()) as SystemMetric[];
+      const metric = metrics.find((m: SystemMetric) => m.id === id);
       if (metric) {
         const updated = { ...metric, ...updates };
         this.memStorage.get('systemMetrics').set(metric.metricType, updated);
@@ -412,14 +414,20 @@ export class DatabaseStorage implements IStorage {
   // System Health methods
   async getSystemHealth(): Promise<SystemHealth[]> {
     if (!this.useDatabase) {
-      return Array.from(this.memStorage.get('systemHealth').values());
+      return Array.from(this.memStorage.get('systemHealth').values()) as SystemHealth[];
     }
     return await db.select().from(systemHealth);
   }
 
   async getSystemHealthByService(service: string): Promise<SystemHealth | undefined> {
     if (!this.useDatabase) {
-      return this.memStorage.get('systemHealth').get(service);
+      const healthMap = this.memStorage.get('systemHealth');
+      if (healthMap && healthMap instanceof Map) {
+        return healthMap.get(service);
+      }
+      // Fallback: search through values if map is corrupted
+      const healthArray = Array.from(this.memStorage.get('systemHealth').values()) as SystemHealth[];
+      return healthArray.find((h: SystemHealth) => h.service === service);
     }
     const result = await db.select().from(systemHealth).where(eq(systemHealth.service, service)).limit(1);
     return result[0];

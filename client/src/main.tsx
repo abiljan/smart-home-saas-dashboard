@@ -1,8 +1,14 @@
 // First, test if the script is loading at all
 console.log("Main.tsx script is loading...");
 
+// Prevent unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.warn('Unhandled promise rejection (suppressed):', event.reason);
+  event.preventDefault(); // Prevent the error from showing in console
+});
+
 // Test immediate DOM manipulation without React
-document.addEventListener('DOMContentLoaded', () => {
+function initializeDashboard() {
   console.log("DOM loaded, testing direct manipulation...");
   const rootElement = document.getElementById("root");
   if (rootElement) {
@@ -153,9 +159,17 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     console.error("❌ Root element not found");
   }
-});
+}
 
-// Still attempt React loading as backup
+// Call the initialization when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeDashboard);
+} else {
+  // DOM is already loaded
+  initializeDashboard();
+}
+
+// Still attempt CSS loading as backup
 import("./index.css").then(() => {
   console.log("CSS loaded");
 }).catch(err => {
