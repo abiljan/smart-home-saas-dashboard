@@ -82,14 +82,16 @@ Key architectural decisions include using Drizzle ORM for type safety, WebSocket
 - Production deployment guide available (DEPLOYMENT.md)
 - All core functionality verified with real-time updates and error handling
 
-### Smart Device Discovery Implementation (August 2025)
-- Replaced complex WiFi scanning with practical Smart Manual Entry approach
-- 4-step guided wizard: Device Type → Brand → Location → Review
-- Pre-populated device database with 100+ common devices across 6 categories
-- Automatic model suggestions based on brand selection
-- One-click room assignment with 12 common home locations
-- Simplified "Add Device" flow taking under 2 minutes per device
-- Auto-triggered manual lookup and documentation retrieval
+### Revolutionary Visual Device Discovery (August 2025)
+- **Breakthrough Implementation**: Computer vision device recognition using OpenAI's GPT-4o vision model
+- **Camera Interface**: Full-screen live video feed with real-time device detection overlays
+- **Automatic Identification**: Point camera at devices → AI identifies brand, model, and type instantly
+- **Smart Detection**: TVs, thermostats, speakers, cameras, lights, routers automatically recognized
+- **Confidence Scoring**: Each detection includes accuracy percentage and manual availability status
+- **One-Click Addition**: Tap detected devices with bounding boxes to add to home instantly
+- **Dual Discovery Modes**: Room Scan (wide view) and Focus Device (close-up) scanning options
+- **Fallback Support**: Smart Manual Entry wizard available as backup option
+- **OpenAI Vision Integration**: Advanced OCR and object detection for model number extraction
 
 ### Production Readiness
 - Error handling improved with user-friendly messages

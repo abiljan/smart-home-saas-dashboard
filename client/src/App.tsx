@@ -10,6 +10,7 @@ import DevicesPage from "@/pages/devices";
 import EmergencyPage from "@/pages/emergency";
 import GuestPage from "@/pages/guest";
 import AddDevicePage from "@/pages/add-device";
+import DeviceScannerPage from "@/pages/device-scanner";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/homes/:homeId/emergency" component={EmergencyPage} />
       <Route path="/homes/:homeId/guest" component={GuestPage} />
       <Route path="/homes/:homeId/add-device" component={AddDevicePage} />
+      <Route path="/homes/:homeId/discover" component={DeviceScannerPage} />
       <Route path="/devices" component={DevicesPage} />
       <Route component={NotFound} />
     </Switch>

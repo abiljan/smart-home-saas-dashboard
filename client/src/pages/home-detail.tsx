@@ -1,6 +1,6 @@
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Wifi, Home, Users, AlertTriangle, Settings } from "lucide-react";
+import { ArrowLeft, Plus, Wifi, Home, Users, AlertTriangle, Settings, Camera } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -181,13 +181,19 @@ export default function HomeDetailPage() {
                     <Home className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                     <h3 className="font-medium text-gray-900 mb-2">No devices yet</h3>
                     <p className="text-gray-600 text-sm mb-4">
-                      Start by discovering devices on your network or add them manually.
+                      Discover devices using your camera or add them manually.
                     </p>
                     <div className="flex justify-center space-x-2">
+                      <Link href={`/homes/${homeId}/discover`}>
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                          <Camera className="w-4 h-4 mr-2" />
+                          Scan Devices
+                        </Button>
+                      </Link>
                       <Link href={`/homes/${homeId}/add-device`}>
-                        <Button size="sm">
+                        <Button size="sm" variant="outline">
                           <Plus className="w-4 h-4 mr-2" />
-                          Add Device
+                          Add Manually
                         </Button>
                       </Link>
                     </div>

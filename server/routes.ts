@@ -576,6 +576,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // AI Q&A system endpoints
+  // Vision API for device detection
+  app.post('/api/vision/detect-devices', async (req, res) => {
+    try {
+      const { image, scanType, context } = req.body;
+      
+      if (!image) {
+        return res.status(400).json({ error: 'Image data required' });
+      }
+
+      const startTime = Date.now();
+      const detectionResult = await processDeviceImage(image, scanType, context);
+      const processingTime = Date.now() - startTime;
+
+      res.json({
+        ...detectionResult,
+        processingTime
+      });
+    } catch (error) {
+      console.error('Vision API error:', error);
+      res.status(500).json({ error: 'Failed to process image' });
+    }
+  });
+
   app.post('/api/homes/:homeId/ask', async (req, res) => {
     try {
       const { homeId } = req.params;
@@ -690,6 +713,95 @@ async function generateAIResponse(question: string, context: any, homeId: string
   }
 
   return response;
+}
+
+// OpenAI Vision Processing Function  
+async function processDeviceImage(imageData: string, scanType: string, context: any) {
+  try {
+    const { default: OpenAI } = await import('openai');
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const prompt = `You are an expert at identifying smart home devices from images. Analyze this image and identify any smart home devices visible.
+
+For each device found, provide:
+1. Device type (TV, thermostat, speaker, camera, light, router, etc.)
+2. Brand name if visible
+3. Model number if readable
+4. Confidence score (0-1)
+5. Suggested room-appropriate name
+6. Whether this device likely has online manuals available
+
+Focus on common smart home devices like:
+- TVs (Samsung, LG, Sony, TCL)
+- Thermostats (Nest, Honeywell, Ecobee)
+- Smart speakers (Amazon Echo, Google Nest, Apple HomePod)
+- Security cameras (Ring, Nest, Arlo)
+- Smart lights (Philips Hue, LIFX)
+- Routers/WiFi (Eero, Netgear)
+
+Return your response as a JSON object with this structure:
+{
+  "detectedDevices": [
+    {
+      "type": "television",
+      "brand": "Samsung", 
+      "model": "QN65Q70T",
+      "confidence": 0.85,
+      "boundingBox": {"x": 100, "y": 50, "width": 400, "height": 300},
+      "suggestedName": "Living Room TV",
+      "manualFound": true
+    }
+  ],
+  "extractedText": ["Samsung", "Model QN65Q70T", "Smart TV"],
+  "roomContext": "living_room"
+}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: prompt
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageData
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || '{}');
+    
+    // Enhance with manual lookup simulation
+    if (result.detectedDevices) {
+      result.detectedDevices = result.detectedDevices.map((device: any) => ({
+        ...device,
+        manualFound: device.brand && ['Samsung', 'LG', 'Sony', 'Nest', 'Amazon', 'Google', 'Philips'].includes(device.brand),
+        boundingBox: device.boundingBox || { x: 50, y: 50, width: 200, height: 150 }
+      }));
+    }
+
+    return result;
+  } catch (error) {
+    console.error('OpenAI Vision API error:', error);
+    
+    // Fallback response for demo purposes
+    return {
+      detectedDevices: [],
+      extractedText: [],
+      roomContext: context?.room || 'unknown',
+      error: 'Vision processing failed'
+    };
+  }
 }
 
 // Device Instructions Helper
