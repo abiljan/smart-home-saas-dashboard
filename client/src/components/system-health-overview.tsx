@@ -1,6 +1,8 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle, AlertCircle, XCircle, Clock } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
-interface HealthData {
+interface SystemHealthItem {
   service: string;
   status: string;
   responseTime?: string;
@@ -9,116 +11,72 @@ interface HealthData {
 }
 
 interface SystemHealthOverviewProps {
-  healthData: HealthData[];
+  healthData: SystemHealthItem[];
 }
 
 export function SystemHealthOverview({ healthData }: SystemHealthOverviewProps) {
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'operational':
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'degraded':
+        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
+      case 'down':
+        return <XCircle className="h-5 w-5 text-red-500" />;
+      default:
+        return <Clock className="h-5 w-5 text-gray-500" />;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "operational":
-        return "bg-emerald-500";
-      case "degraded":
-        return "bg-amber-500";
-      case "down":
-        return "bg-red-500";
+      case 'operational':
+        return 'bg-green-100 text-green-800';
+      case 'degraded':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'down':
+        return 'bg-red-100 text-red-800';
       default:
-        return "bg-slate-400";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "operational":
-        return { text: "Operational", color: "text-emerald-600" };
-      case "degraded":
-        return { text: "Degraded", color: "text-amber-600" };
-      case "down":
-        return { text: "Down", color: "text-red-600" };
-      default:
-        return { text: "Unknown", color: "text-slate-600" };
-    }
-  };
-
-  const getServiceTitle = (service: string) => {
-    switch (service) {
-      case "api":
-        return "API Status";
-      case "database":
-        return "Database";
-      case "realtime":
-        return "Real-time";
-      case "external_services":
-        return "External Services";
-      default:
-        return service;
-    }
-  };
-
-  const getServiceMetrics = (service: string, data: HealthData) => {
-    switch (service) {
-      case "api":
-        return [
-          { label: "Response Time", value: data.responseTime || "N/A", color: undefined },
-          { label: "Uptime (24h)", value: data.uptime || "N/A", color: undefined },
-          { label: "Requests/min", value: "142", color: undefined }, // Static for now
-        ];
-      case "database":
-        return [
-          { label: "Query Time", value: data.responseTime || "45ms", color: undefined },
-          { label: "Connections", value: "28/100", color: undefined },
-          { label: "Storage Used", value: "2.4GB", color: undefined },
-        ];
-      case "realtime":
-        return [
-          { label: "Connections", value: data.details?.connections || "847", color: undefined },
-          { label: "Messages/sec", value: data.details?.messagesPerSec || "23", color: undefined },
-          { label: "Last Sync", value: "Now", color: undefined },
-        ];
-      case "external_services":
-        return [
-          { label: "Stripe API", value: "●", color: "text-emerald-500" },
-          { label: "Zendesk API", value: "●", color: "text-amber-500" },
-          { label: "Email Service", value: "●", color: "text-emerald-500" },
-        ];
-      default:
-        return [];
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      {healthData.map((health) => {
-        const statusInfo = getStatusText(health.status);
-        const metrics = getServiceMetrics(health.service, health);
-
-        return (
-          <Card key={health.service} className="bg-white shadow-sm border border-slate-200">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-slate-600">
-                  {getServiceTitle(health.service)}
-                </CardTitle>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-3 h-3 ${getStatusColor(health.status)} rounded-full`}></div>
-                  <span className={`text-xs font-medium ${statusInfo.color}`}>
-                    {statusInfo.text}
-                  </span>
+    <Card>
+      <CardHeader>
+        <CardTitle>System Health</CardTitle>
+        <CardDescription>Real-time status of all services</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {healthData?.map((service) => (
+            <div key={service.service} className="flex items-center justify-between p-3 border rounded-lg">
+              <div className="flex items-center space-x-3">
+                {getStatusIcon(service.status)}
+                <div>
+                  <h4 className="font-medium capitalize">{service.service.replace('_', ' ')}</h4>
+                  {service.details?.connections && (
+                    <p className="text-sm text-gray-600">
+                      {service.details.connections} connections, {service.details.messagesPerSec}/sec
+                    </p>
+                  )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {metrics.map((metric, index) => (
-                <div key={index} className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">{metric.label}</span>
-                  <span className={`text-sm font-semibold ${metric.color ? metric.color : 'text-slate-900'}`}>
-                    {metric.value}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+              <div className="flex items-center space-x-2">
+                <Badge className={getStatusColor(service.status)}>
+                  {service.status}
+                </Badge>
+                {service.responseTime && (
+                  <span className="text-sm text-gray-600">{service.responseTime}</span>
+                )}
+                {service.uptime && (
+                  <span className="text-sm text-gray-600">{service.uptime}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

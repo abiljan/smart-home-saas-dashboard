@@ -1,8 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { AlertTriangle, Volume2, VolumeX, Power, Settings } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Shield } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface EmergencySetting {
@@ -16,118 +19,129 @@ interface EmergencyControlsProps {
 
 export function EmergencyControls({ settings }: EmergencyControlsProps) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [pendingChanges, setPendingChanges] = useState<Set<string>>(new Set());
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ name, isEnabled }: { name: string; isEnabled: boolean }) => {
-      const response = await apiRequest("PATCH", `/api/emergency-settings/${name}`, { isEnabled });
+    mutationFn: async ({ name, enabled }: { name: string; enabled: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/emergency-settings/${name}`, {
+        isEnabled: enabled,
+      });
       return response.json();
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-summary"] });
+      setPendingChanges(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(variables.name);
+        return newSet;
+      });
       toast({
-        title: `Emergency setting ${variables.isEnabled ? 'enabled' : 'disabled'}`,
-        description: `${variables.name.replace('_', ' ')} has been ${variables.isEnabled ? 'enabled' : 'disabled'}.`,
-        variant: variables.isEnabled ? "destructive" : "default",
+        title: "Emergency setting updated",
+        description: `${variables.name.replace(/_/g, ' ')} has been ${variables.enabled ? 'enabled' : 'disabled'}`,
+        variant: variables.enabled ? "destructive" : "default"
       });
     },
-    onError: () => {
+    onError: (error, variables) => {
+      setPendingChanges(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(variables.name);
+        return newSet;
+      });
       toast({
-        title: "Error",
-        description: "Failed to update emergency setting. Please try again.",
-        variant: "destructive",
+        title: "Failed to update setting",
+        description: "Please try again or contact support",
+        variant: "destructive"
       });
     },
   });
 
-  const getSetting = (name: string) => {
-    return settings.find(s => s.settingName === name);
-  };
-
-  const getSettingConfig = (name: string) => {
-    switch (name) {
-      case "content_kill_switch":
-        return {
-          title: "Content Kill Switch",
-          description: "Immediately disable content delivery to all homes",
-          bgColor: "bg-red-50",
-          borderColor: "border-red-200",
-          textColor: "text-red-900",
-          descColor: "text-red-700",
-        };
-      case "maintenance_mode":
-        return {
-          title: "API Maintenance Mode",
-          description: "Put API in maintenance mode for system updates",
-          bgColor: "bg-amber-50",
-          borderColor: "border-amber-200",
-          textColor: "text-amber-900",
-          descColor: "text-amber-700",
-        };
-      case "sound_alerts":
-        return {
-          title: "Sound Alerts",
-          description: "Enable audio notifications for critical events",
-          bgColor: "bg-blue-50",
-          borderColor: "border-blue-200",
-          textColor: "text-blue-900",
-          descColor: "text-blue-700",
-        };
-      default:
-        return {
-          title: name.replace('_', ' '),
-          description: "Emergency control setting",
-          bgColor: "bg-slate-50",
-          borderColor: "border-slate-200",
-          textColor: "text-slate-900",
-          descColor: "text-slate-700",
-        };
-    }
-  };
-
   const handleToggle = (settingName: string, currentValue: boolean) => {
+    setPendingChanges(prev => new Set(prev).add(settingName));
     updateSettingMutation.mutate({
       name: settingName,
-      isEnabled: !currentValue,
+      enabled: !currentValue,
     });
   };
 
+  const getSettingIcon = (name: string) => {
+    switch (name) {
+      case 'content_kill_switch':
+        return <Power className="h-5 w-5 text-red-600" />;
+      case 'maintenance_mode':
+        return <Settings className="h-5 w-5 text-yellow-600" />;
+      case 'sound_alerts':
+        return <Volume2 className="h-5 w-5 text-blue-600" />;
+      default:
+        return <AlertTriangle className="h-5 w-5 text-gray-600" />;
+    }
+  };
+
+  const getSettingTitle = (name: string) => {
+    switch (name) {
+      case 'content_kill_switch':
+        return 'Content Kill Switch';
+      case 'maintenance_mode':
+        return 'Maintenance Mode';
+      case 'sound_alerts':
+        return 'Sound Alerts';
+      default:
+        return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+  };
+
+  const getSettingDescription = (name: string) => {
+    switch (name) {
+      case 'content_kill_switch':
+        return 'Immediately disable all user-facing content';
+      case 'maintenance_mode':
+        return 'Put system into maintenance mode';
+      case 'sound_alerts':
+        return 'Enable audio notifications for critical alerts';
+      default:
+        return 'Emergency system control';
+    }
+  };
+
   return (
-    <Card className="bg-white shadow-sm border border-slate-200">
-      <CardHeader className="pb-6">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-slate-900">
-            Emergency Controls
-          </CardTitle>
-          <div className="flex items-center space-x-2">
-            <Shield className="text-red-500" size={20} />
-            <span className="text-xs text-red-600 font-medium">Critical Access</span>
-          </div>
-        </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <AlertTriangle className="h-5 w-5 text-red-500" />
+          <span>Emergency Controls</span>
+        </CardTitle>
+        <CardDescription>
+          Critical system controls - use with caution
+        </CardDescription>
       </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {["content_kill_switch", "maintenance_mode", "sound_alerts"].map((settingName) => {
-          const setting = getSetting(settingName);
-          const config = getSettingConfig(settingName);
-          
-          return (
-            <div 
-              key={settingName}
-              className={`flex items-center justify-between p-4 ${config.bgColor} rounded-lg border ${config.borderColor}`}
-            >
-              <div>
-                <h4 className={`font-medium ${config.textColor}`}>{config.title}</h4>
-                <p className={`text-sm ${config.descColor}`}>{config.description}</p>
+      <CardContent>
+        <div className="space-y-4">
+          {settings?.map((setting) => (
+            <div key={setting.settingName} className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-3">
+                {getSettingIcon(setting.settingName)}
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h4 className="font-medium">{getSettingTitle(setting.settingName)}</h4>
+                    {setting.isEnabled && (
+                      <Badge variant="destructive">Active</Badge>
+                    )}
+                    {pendingChanges.has(setting.settingName) && (
+                      <Badge variant="secondary">Updating...</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {getSettingDescription(setting.settingName)}
+                  </p>
+                </div>
               </div>
               <Switch
-                checked={setting?.isEnabled || false}
-                onCheckedChange={() => handleToggle(settingName, setting?.isEnabled || false)}
-                disabled={updateSettingMutation.isPending}
+                checked={setting.isEnabled}
+                onCheckedChange={() => handleToggle(setting.settingName, setting.isEnabled)}
+                disabled={pendingChanges.has(setting.settingName)}
               />
             </div>
-          );
-        })}
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

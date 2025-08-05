@@ -171,21 +171,25 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Critical Alerts Bar */}
-        <CriticalAlertsBar alerts={dashboardData?.criticalAlerts || []} />
+        <div className="space-y-6">
+          {/* Critical Alerts Bar */}
+          <CriticalAlertsBar alerts={dashboardData?.criticalAlerts || []} />
 
-        {/* System Health Overview */}
-        <SystemHealthOverview healthData={dashboardData?.systemHealth || []} />
+          {/* Key Metrics Dashboard */}
+          <KeyMetricsDashboard 
+            metrics={dashboardData?.systemMetrics || []}
+          />
 
-        {/* Key Metrics Dashboard */}
-        <KeyMetricsDashboard 
-          metrics={dashboardData?.systemMetrics || []}
-          healthData={dashboardData?.systemHealth || []}
-        />
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* System Health Overview */}
+            <SystemHealthOverview healthData={dashboardData?.systemHealth || []} />
+            
+            {/* Emergency Controls */}
+            <EmergencyControls settings={dashboardData?.emergencySettings || []} />
+          </div>
 
-        {/* Emergency Controls and Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <EmergencyControls settings={dashboardData?.emergencySettings || []} />
+          {/* Activity Log */}
           <ActivityLog activities={dashboardData?.recentActivity || []} />
         </div>
       </div>

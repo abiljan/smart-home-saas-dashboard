@@ -1,7 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Clock, AlertCircle, Info, AlertTriangle, User, Settings } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-interface Activity {
+interface ActivityLogItem {
   id: string;
   eventType: string;
   title: string;
@@ -11,82 +13,110 @@ interface Activity {
 }
 
 interface ActivityLogProps {
-  activities: Activity[];
+  activities: ActivityLogItem[];
 }
 
 export function ActivityLog({ activities }: ActivityLogProps) {
-  const getSeverityColor = (severity: string) => {
+  const getSeverityIcon = (severity: string) => {
     switch (severity) {
-      case "critical":
-        return "bg-red-500";
-      case "warning":
-        return "bg-amber-500";
-      case "info":
-        return "bg-blue-500";
+      case 'critical':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'info':
+        return <Info className="h-4 w-4 text-blue-500" />;
       default:
-        return "bg-slate-400";
+        return <Clock className="h-4 w-4 text-gray-500" />;
     }
   };
 
-  const getTimeAgo = (timestamp: string) => {
+  const getEventTypeIcon = (eventType: string) => {
+    switch (eventType) {
+      case 'user_action':
+        return <User className="h-4 w-4" />;
+      case 'emergency_control':
+        return <Settings className="h-4 w-4" />;
+      default:
+        return <Clock className="h-4 w-4" />;
+    }
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+        return 'destructive';
+      case 'warning':
+        return 'secondary';
+      case 'info':
+        return 'outline';
+      default:
+        return 'outline';
+    }
+  };
+
+  const formatTimeAgo = (timestamp: string) => {
     const now = new Date();
     const time = new Date(timestamp);
     const diffMinutes = Math.floor((now.getTime() - time.getTime()) / (1000 * 60));
     
-    if (diffMinutes === 0) return "Just now";
-    if (diffMinutes === 1) return "1 min ago";
-    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
     
     const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours === 1) return "1 hour ago";
-    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return "1 day ago";
-    return `${diffDays} days ago`;
+    return `${diffDays}d ago`;
   };
 
   return (
-    <Card className="bg-white shadow-sm border border-slate-200">
-      <CardHeader className="pb-6">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-slate-900">
-            Recent Activity
-          </CardTitle>
-          <Button 
-            variant="link" 
-            size="sm"
-            className="text-blue-600 hover:text-blue-800"
-          >
-            View All
-          </Button>
-        </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Activity Log</CardTitle>
+        <CardDescription>Recent system events and user actions</CardDescription>
       </CardHeader>
-      
       <CardContent>
-        <div className="space-y-4">
-          {activities.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              No recent activity to display
-            </div>
-          ) : (
-            activities.map((activity) => (
-              <div 
-                key={activity.id}
-                className="flex items-start space-x-3 pb-4 border-b border-slate-100 last:border-b-0 last:pb-0"
-              >
-                <div className={`w-2 h-2 ${getSeverityColor(activity.severity)} rounded-full mt-2 flex-shrink-0`}></div>
+        <ScrollArea className="h-96">
+          <div className="space-y-3">
+            {activities?.map((activity) => (
+              <div key={activity.id} className="flex items-start space-x-3 p-3 border rounded-lg">
+                <div className="flex-shrink-0 mt-1">
+                  {getSeverityIcon(activity.severity)}
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-slate-900 font-medium">{activity.title}</p>
-                    <span className="text-xs text-slate-500">{getTimeAgo(activity.timestamp)}</span>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-sm font-medium text-gray-900">
+                        {activity.title}
+                      </p>
+                      <Badge variant={getSeverityColor(activity.severity)}>
+                        {activity.severity}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {formatTimeAgo(activity.timestamp)}
+                    </span>
                   </div>
-                  <p className="text-sm text-slate-600">{activity.description}</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {activity.description}
+                  </p>
+                  <div className="flex items-center space-x-2 mt-2">
+                    {getEventTypeIcon(activity.eventType)}
+                    <span className="text-xs text-gray-500 capitalize">
+                      {activity.eventType.replace(/_/g, ' ')}
+                    </span>
+                  </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+            {(!activities || activities.length === 0) && (
+              <div className="text-center py-6 text-gray-500">
+                <Clock className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                <p>No recent activity</p>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </CardContent>
     </Card>
   );
