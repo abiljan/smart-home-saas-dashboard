@@ -452,7 +452,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateSystemHealth(id: string, updates: Partial<SystemHealth>): Promise<SystemHealth | undefined> {
     if (!this.useDatabase) {
-      const health = Array.from(this.memStorage.get('systemHealth').values()).find((h: SystemHealth) => h.id === id);
+      const healthArray = Array.from(this.memStorage.get('systemHealth').values()) as SystemHealth[];
+      const health = healthArray.find((h: SystemHealth) => h.id === id);
       if (health) {
         const updated = { ...health, ...updates };
         this.memStorage.get('systemHealth').set(health.service, updated);

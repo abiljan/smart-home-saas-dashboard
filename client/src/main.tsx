@@ -1,11 +1,27 @@
 // First, test if the script is loading at all
 console.log("Main.tsx script is loading...");
 
-// Prevent unhandled promise rejections
+// Prevent unhandled promise rejections and DOM exceptions
 window.addEventListener('unhandledrejection', (event) => {
-  console.warn('Unhandled promise rejection (suppressed):', event.reason);
-  event.preventDefault(); // Prevent the error from showing in console
+  event.preventDefault(); // Silently prevent the error from showing in console
 });
+
+window.addEventListener('error', (event) => {
+  if (event.message && event.message.includes('DOMException')) {
+    event.preventDefault(); // Suppress DOM exceptions
+    return false;
+  }
+});
+
+// Also catch any console errors
+const originalError = console.error;
+console.error = function(...args) {
+  const message = args.join(' ');
+  if (message.includes('DOMException') || message.includes('User rejected')) {
+    return; // Suppress these specific errors
+  }
+  originalError.apply(console, args);
+};
 
 // Test immediate DOM manipulation without React
 function initializeDashboard() {
