@@ -26,6 +26,7 @@ A comprehensive superadmin dashboard for monitoring and managing a Smart Home Sa
 ### Advanced Features
 - **Critical Alerts System**: Browser notifications for urgent issues
 - **Activity Logging**: Comprehensive audit trail with severity levels
+- **Dual Object Detection**: Choose between fast YOLOv8 (free) or smart OpenAI (premium) vision
 - **Responsive Design**: Mobile-friendly interface for on-the-go monitoring
 - **Privacy-First**: No access to individual home data, only aggregate metrics
 
@@ -34,6 +35,7 @@ A comprehensive superadmin dashboard for monitoring and managing a Smart Home Sa
 ### Prerequisites
 - Node.js 18+ or Node.js 20+
 - PostgreSQL database (or Supabase account)
+- Python 3.8+ (for automatic YOLOv8 object detection - installs automatically)
 
 ### Installation
 
@@ -65,6 +67,8 @@ npm run dev
 ```
 
 The dashboard will be available at `http://localhost:5000`
+
+**🎉 That's it!** The YOLOv8 object detection service will start automatically in the background. No separate terminals or manual service management required.
 
 ## 🔧 Configuration
 

@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { env, logger } from "./config";
+import { yoloManager } from "./yolo-manager.js";
 
 const app = express();
 
@@ -64,6 +65,13 @@ app.use((req, res, next) => {
 (async () => {
   try {
     logger.info('Starting Smart Home SaaS Dashboard...');
+    
+    // Initialize YOLOv8 service in the background
+    yoloManager.initialize().catch((error) => {
+      logger.warn('YOLOv8 service initialization failed:', error.message);
+      logger.info('🔄 Vision detection will fall back to OpenAI if available');
+    });
+    
     const server = await registerRoutes(app);
 
   // Global error handler
@@ -108,14 +116,31 @@ app.use((req, res, next) => {
   }
 })();
 
+// Graceful shutdown
+async function gracefulShutdown(signal: string) {
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
+  
+  // Shutdown YOLOv8 service
+  await yoloManager.shutdown();
+  
+  logger.info('✅ Graceful shutdown complete');
+  process.exit(0);
+}
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', async (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  await yoloManager.shutdown();
   process.exit(1);
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', async (error) => {
   logger.error('Uncaught Exception:', error);
+  await yoloManager.shutdown();
   process.exit(1);
 });

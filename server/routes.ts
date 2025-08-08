@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { yoloManager } from "./yolo-manager.js";
 import { env, logger } from "./config";
 import { 
   insertCriticalAlertSchema,
@@ -47,6 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+// Infrastructure Health Check  app.get("/api/health", async (req, res) => {    try {      const yoloStatus = yoloManager.getInfrastructureStatus();      const health = {        status: "healthy",        timestamp: new Date().toISOString(),        services: {          api: { status: "operational", message: "API server running" },          yolo: {            status: yoloStatus.available ? "operational" : "degraded",            available: yoloStatus.available,            method: yoloStatus.method,            message: yoloStatus.message          }        }      };      res.json(health);    } catch (error) {      res.status(500).json({         status: "unhealthy",         error: error.message,        timestamp: new Date().toISOString()      });    }  });  app.get("/api/infrastructure/status", async (req, res) => {    try {      const yoloStatus = yoloManager.getInfrastructureStatus();      res.json({        yolo: yoloStatus,        deployment: {          dockerized: process.env.NODE_ENV === "production",          environment: process.env.NODE_ENV || "development"        }      });    } catch (error) {      res.status(500).json({ error: error.message });    }  });
   // System Health endpoints
   app.get("/api/system-health", async (req, res) => {
     try {
@@ -656,14 +658,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Vision API for device detection
   app.post('/api/vision/detect-devices', async (req, res) => {
     try {
-      const { image, scanType, context } = req.body;
+      const { image, scanType, context, engine = 'yolo' } = req.body;
       
       if (!image) {
         return res.status(400).json({ error: 'Image data required' });
       }
 
+      // Validate engine parameter
+      if (!['yolo', 'openai'].includes(engine)) {
+        return res.status(400).json({ error: 'Invalid engine. Must be "yolo" or "openai"' });
+      }
+
       const startTime = Date.now();
-      const detectionResult = await processDeviceImage(image, scanType, context);
+      const detectionResult = await processDeviceImage(image, engine, scanType, context);
       const processingTime = Date.now() - startTime;
 
       res.json({
@@ -792,8 +799,84 @@ async function generateAIResponse(question: string, context: any, homeId: string
   return response;
 }
 
+// Dual Engine Vision Processing Function with Smart Fallback
+async function processDeviceImage(imageData: string, engine: string, scanType: string, context: any) {
+  // Smart fallback logic: if OpenAI is requested but not available, use YOLO
+  if (engine === 'openai' && !env.OPENAI_API_KEY) {
+    logger.warn('OpenAI requested but API key not configured, falling back to YOLO');
+    engine = 'yolo';
+  }
+
+  switch (engine) {
+    case 'yolo':
+      const yoloResult = await processWithYOLO(imageData, scanType, context);
+      // If YOLO fails and OpenAI is available, try OpenAI as fallback
+      if (yoloResult.error && env.OPENAI_API_KEY) {
+        logger.warn('YOLO failed, attempting OpenAI fallback...');
+        return await processWithOpenAI(imageData, scanType, context);
+      }
+      return yoloResult;
+      
+    case 'openai':
+      const openaiResult = await processWithOpenAI(imageData, scanType, context);
+      // If OpenAI fails, try YOLO as fallback
+      if (openaiResult.error) {
+        logger.warn('OpenAI failed, attempting YOLO fallback...');
+        return await processWithYOLO(imageData, scanType, context);
+      }
+      return openaiResult;
+      
+    default:
+      // Fallback to YOLO if unknown engine
+      logger.warn(`Unknown engine "${engine}", falling back to YOLO`);
+      return await processWithYOLO(imageData, scanType, context);
+  }
+}
+
+// YOLOv8 Processing Function
+async function processWithYOLO(imageData: string, scanType: string, context: any) {
+  try {
+    // Check if YOLO service is configured
+    const yoloServiceUrl = env.YOLO_SERVICE_URL || 'http://localhost:5001';
+    
+    logger.info('Processing with YOLOv8 service...');
+    
+    const response = await fetch(`${yoloServiceUrl}/detect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image: imageData,
+        scanType: scanType,
+        context: context
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`YOLO service error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    logger.info(`YOLOv8 detected ${result.smartDevices || 0} smart devices in ${result.processingTime}ms`);
+    
+    return result;
+  } catch (error) {
+    logger.error('YOLOv8 processing error:', error);
+    
+    // Fallback response
+    return {
+      detectedDevices: [],
+      extractedText: [],
+      roomContext: context?.room || 'unknown',
+      engine: 'yolo',
+      error: `YOLO processing failed: ${error.message}`
+    };
+  }
+}
+
 // OpenAI Vision Processing Function  
-async function processDeviceImage(imageData: string, scanType: string, context: any) {
+async function processWithOpenAI(imageData: string, scanType: string, context: any) {
   try {
     // Check if OpenAI API key is available
     if (!env.OPENAI_API_KEY) {
@@ -872,6 +955,9 @@ Return your response as a JSON object with this structure:
       }));
     }
 
+    // Add engine information
+    result.engine = 'openai';
+
     return result;
   } catch (error) {
     logger.error('OpenAI Vision API error:', error);
@@ -881,7 +967,8 @@ Return your response as a JSON object with this structure:
       detectedDevices: [],
       extractedText: [],
       roomContext: context?.room || 'unknown',
-      error: 'Vision processing failed'
+      engine: 'openai',
+      error: 'OpenAI vision processing failed'
     };
   }
 }

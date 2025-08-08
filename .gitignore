@@ -12,6 +12,13 @@ vite.config.ts.*
 .env.test.local
 .env.production.local
 
+# Python dependency tracking
+.python-deps-installed
+yolo_env/
+__pycache__/
+*.pyc
+*.pyo
+
 # Database
 *.db
 *.sqlite

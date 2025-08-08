@@ -1,0 +1,11 @@
+# YOLOv8 Object Detection Service Requirements
+ultralytics>=8.0.0
+flask>=2.3.0
+flask-cors>=4.0.0
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+
+# Optional: For GPU acceleration (comment out if using CPU only)
+# torch>=2.0.0
+# torchvision>=0.15.0

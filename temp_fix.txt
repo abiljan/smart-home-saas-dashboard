@@ -1,0 +1,11 @@
+    // Check if infrastructure has YOLOv8 pre-installed
+    const canStart = await this.checkInfrastructureDependencies();
+    if (\!canStart) {
+      logger.warn('⚠️  YOLOv8 not found in infrastructure. Vision detection will use OpenAI only.');
+      logger.info('📋 For SaaS operators: Deploy with pre-installed YOLOv8 using deployment/Dockerfile');
+      return;
+    }
+
+    // Start the YOLOv8 service
+    await this.startYOLOService();
+EOF < /dev/null

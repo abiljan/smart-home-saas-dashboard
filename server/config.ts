@@ -11,6 +11,8 @@ export interface EnvConfig {
   NODE_ENV: string;
   DATABASE_URL?: string;
   OPENAI_API_KEY?: string;
+  YOLO_SERVICE_URL?: string;
+  DEFAULT_DETECTION_ENGINE?: string;
 }
 
 /**
@@ -22,6 +24,8 @@ export function validateEnvironment(): EnvConfig {
     NODE_ENV: process.env.NODE_ENV || 'development',
     DATABASE_URL: process.env.DATABASE_URL,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    YOLO_SERVICE_URL: process.env.YOLO_SERVICE_URL || 'http://localhost:5001',
+    DEFAULT_DETECTION_ENGINE: process.env.DEFAULT_DETECTION_ENGINE || 'yolo',
   };
 
   // Validate required fields
@@ -40,7 +44,13 @@ export function validateEnvironment(): EnvConfig {
   }
 
   if (!config.OPENAI_API_KEY) {
-    console.warn('OPENAI_API_KEY not configured. AI-powered features will be disabled.');
+    console.warn('OPENAI_API_KEY not configured. OpenAI vision detection will be disabled.');
+  }
+
+  // Validate detection engine
+  if (!['yolo', 'openai'].includes(config.DEFAULT_DETECTION_ENGINE!)) {
+    console.warn(`DEFAULT_DETECTION_ENGINE '${config.DEFAULT_DETECTION_ENGINE}' is invalid. Using 'yolo' as default.`);
+    config.DEFAULT_DETECTION_ENGINE = 'yolo';
   }
 
   return config;

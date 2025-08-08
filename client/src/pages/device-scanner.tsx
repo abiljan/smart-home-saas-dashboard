@@ -43,7 +43,9 @@ export default function DeviceScannerPage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [detections, setDetections] = useState<DetectedDevice[]>([]);
   const [scanMode, setScanMode] = useState<'room' | 'device'>('room');
+  const [detectionEngine, setDetectionEngine] = useState<'yolo' | 'openai'>('yolo');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<{yolo: boolean, openai: boolean}>({yolo: false, openai: false});
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string>('');
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
@@ -51,22 +53,21 @@ export default function DeviceScannerPage() {
 
   const visionMutation = useMutation({
     mutationFn: (imageData: string) =>
-      apiRequest('/api/vision/detect-devices', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          image: imageData, 
-          scanType: 'devices',
-          context: { room: 'auto-detect' }
-        }),
-        headers: { 'Content-Type': 'application/json' }
+      apiRequest('POST', '/api/vision/detect-devices', { 
+        image: imageData, 
+        engine: detectionEngine,
+        scanType: 'devices',
+        context: { room: 'auto-detect' }
       }),
     onSuccess: (result: ScanResult) => {
       setDetections(result.detectedDevices);
       setIsProcessing(false);
       if (result.detectedDevices.length > 0) {
+        const engineLabel = result.engine === 'yolo' ? 'YOLOv8' : 'OpenAI';
+        const timing = result.processingTime ? ` in ${result.processingTime}ms` : '';
         toast({
           title: `Found ${result.detectedDevices.length} device${result.detectedDevices.length > 1 ? 's' : ''}`,
-          description: "Tap on detected devices to add them to your home.",
+          description: `${engineLabel} detected devices${timing}. Tap to add them to your home.`,
         });
       }
     },
@@ -302,8 +303,28 @@ export default function DeviceScannerPage() {
     addDeviceMutation.mutate(deviceData);
   };
 
+  // Check service availability
+  const checkServiceStatus = useCallback(async () => {
+    try {
+      // Check YOLOv8 service
+      const yoloResponse = await fetch('http://localhost:5001/health').catch(() => null);
+      const yoloAvailable = yoloResponse?.ok || false;
+      
+      // Check if we have OpenAI configured (we can't directly test without making a paid API call)
+      // We'll assume it's available if the user selects it
+      const openaiAvailable = true; // Will be validated on actual detection call
+      
+      setServiceStatus({
+        yolo: yoloAvailable,
+        openai: openaiAvailable
+      });
+    } catch (error) {
+      console.log('Service status check failed:', error);
+    }
+  }, []);
+
   useEffect(() => {
-    // Check camera capabilities on mount (only once)
+    // Check camera capabilities and service status on mount
     let mounted = true;
     
     const initCamera = async () => {
@@ -313,12 +334,17 @@ export default function DeviceScannerPage() {
     };
     
     initCamera();
+    checkServiceStatus();
+    
+    // Periodically check service status
+    const statusInterval = setInterval(checkServiceStatus, 10000); // Every 10 seconds
     
     return () => {
       mounted = false;
+      clearInterval(statusInterval);
       stopCamera();
     };
-  }, []); // Empty deps to run only once
+  }, [checkCameraCapabilities, checkServiceStatus, availableCameras.length, stopCamera]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -383,6 +409,52 @@ export default function DeviceScannerPage() {
                     </Select>
                   </div>
                 )}
+
+                {/* Detection Engine Selection */}
+                <div className="mb-4">
+                  <div className="text-sm text-gray-400 mb-2">Detection Engine</div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={detectionEngine === 'yolo' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setDetectionEngine('yolo')}
+                      className="flex items-center gap-2"
+                      disabled={!serviceStatus.yolo}
+                    >
+                      {serviceStatus.yolo ? '🚀' : '⏳'} Fast (YOLOv8)
+                      <Badge variant="secondary" className="text-xs">
+                        {serviceStatus.yolo ? 'Ready' : 'Starting...'}
+                      </Badge>
+                    </Button>
+                    <Button
+                      variant={detectionEngine === 'openai' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setDetectionEngine('openai')}
+                      className="flex items-center gap-2"
+                    >
+                      🧠 Smart (OpenAI)
+                      <Badge variant="outline" className="text-xs">Premium</Badge>
+                    </Button>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    {detectionEngine === 'yolo' ? (
+                      serviceStatus.yolo ? (
+                        '⚡ Real-time local processing (~25ms) with general object detection'
+                      ) : (
+                        '⏳ YOLOv8 service is starting up automatically...'
+                      )
+                    ) : (
+                      '🎯 AI-powered analysis (~1500ms) with brand/model recognition'
+                    )}
+                  </div>
+                  
+                  {!serviceStatus.yolo && (
+                    <div className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                      <div className="animate-spin w-3 h-3 border border-yellow-400 border-t-transparent rounded-full"></div>
+                      Installing Python dependencies and starting YOLOv8 service...
+                    </div>
+                  )}
+                </div>
 
                 <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
                   {cameraError ? (
