@@ -14,7 +14,7 @@ export function useNotifications() {
 
   const requestPermission = useCallback(async () => {
     if (typeof window === "undefined" || !("Notification" in window)) {
-      console.warn("Notifications are not supported in this browser");
+      // Notifications are not supported in this browser
       return "denied";
     }
 
@@ -27,7 +27,7 @@ export function useNotifications() {
       setPermission(result);
       return result;
     } catch (error) {
-      console.error("Failed to request notification permission:", error);
+      // Failed to request notification permission - silently handle the error
       return "denied";
     }
   }, [permission]);
@@ -35,12 +35,12 @@ export function useNotifications() {
   const showNotification = useCallback(
     (title: string, options: NotificationOptions = {}) => {
       if (typeof window === "undefined" || !("Notification" in window)) {
-        console.warn("Notifications are not supported");
+        // Notifications are not supported
         return null;
       }
 
       if (permission !== "granted") {
-        console.warn("Notification permission has been denied");
+        // Notification permission has been denied
         return null;
       }
 
@@ -61,7 +61,7 @@ export function useNotifications() {
 
         return notification;
       } catch (error) {
-        console.error("Failed to show notification:", error);
+        // Failed to show notification - silently handle the error
         return null;
       }
     },

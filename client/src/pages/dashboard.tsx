@@ -59,8 +59,7 @@ export default function Dashboard() {
   // WebSocket connection for real-time updates
   const { isConnected } = useWebSocket({
     onMessage: (data: any) => {
-      console.log("WebSocket message received:", data);
-      // Refetch dashboard data when we receive updates
+      // WebSocket message received - refetch dashboard data
       refetch();
       setLastUpdated("Just now");
     },

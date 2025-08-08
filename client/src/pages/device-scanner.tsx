@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Camera, Scan, Zap, CheckCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Camera, Scan, Zap, CheckCircle, AlertCircle, Settings } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -44,6 +45,9 @@ export default function DeviceScannerPage() {
   const [scanMode, setScanMode] = useState<'room' | 'device'>('room');
   const [isProcessing, setIsProcessing] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string>('');
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
 
   const visionMutation = useMutation({
     mutationFn: (imageData: string) =>
@@ -94,29 +98,158 @@ export default function DeviceScannerPage() {
     }
   });
 
-  const startCamera = useCallback(async () => {
+  // Check camera capabilities and permissions
+  const checkCameraCapabilities = useCallback(async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'environment',
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError('Camera API not supported in this browser');
+        return false;
+      }
+
+      // Check HTTPS requirement (except localhost and development)
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname === '0.0.0.0' ||
+                       window.location.hostname.includes('localhost') ||
+                       window.location.port === '5000'; // Development server
+      
+      // Security check: verify HTTPS or development environment
+      
+      // Skip HTTPS check in development - let browser handle the actual permission
+      // Temporarily disable this check to debug camera issues
+      // if (!isSecure && window.location.hostname !== '127.0.0.1' && !window.location.hostname.includes('localhost')) {
+      //   setCameraError(`Camera access requires HTTPS. Current: ${window.location.href} - Please use https:// or localhost`);
+      //   return false;
+      // }
+
+      // Get available cameras
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(device => device.kind === 'videoinput');
+      
+      // Camera enumeration: found cameras for selection
+      
+      if (cameras.length === 0) {
+        setCameraError('No camera found on this device');
+        return false;
+      }
+
+      setAvailableCameras(cameras);
+      
+      // Auto-select best camera (rear camera if available, otherwise first camera)
+      const rearCamera = cameras.find(camera => 
+        camera.label.toLowerCase().includes('back') || 
+        camera.label.toLowerCase().includes('rear') ||
+        camera.label.toLowerCase().includes('environment')
+      );
+      const selectedCamera = rearCamera?.deviceId || cameras[0].deviceId;
+      setSelectedCameraId(selectedCamera);
+      
+      // Camera selection: auto-selected best available camera
+      
+      return true;
+    } catch (error) {
+      // Camera capability check failed
+      setCameraError('Unable to check camera capabilities');
+      return false;
+    }
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    // Starting camera initialization
+    setCameraError('');
+    
+    try {
+      // First check capabilities
+      const canUseCamera = await checkCameraCapabilities();
+      // Check if camera capabilities are available
+      if (!canUseCamera) return;
+
+      // Try to get camera stream with flexible constraints
+      let constraints: MediaStreamConstraints = {
+        video: {
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
-      });
+      };
+
+      // Use specific camera if selected
+      if (selectedCameraId) {
+        constraints.video = {
+          ...constraints.video,
+          deviceId: { exact: selectedCameraId }
+        };
+      } else {
+        // Mobile: prefer rear camera, Desktop: accept any camera
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        constraints.video = {
+          ...constraints.video,
+          facingMode: isMobile ? { ideal: 'environment' } : 'user'
+        };
+      }
+
+      let mediaStream: MediaStream;
+      
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        // Fallback: try with minimal constraints if rear camera fails
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      }
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
         setStream(mediaStream);
         setCameraReady(true);
+        setCameraError('');
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Camera access error - handle gracefully
+      
+      let errorMessage = 'Camera access failed';
+      let errorDescription = 'Please check your camera permissions and try again.';
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Camera Permission Denied';
+        errorDescription = 'Please allow camera access in your browser settings and refresh the page.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No Camera Found';
+        errorDescription = 'No camera device was found. Please connect a camera and try again.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'Camera In Use';
+        errorDescription = 'Camera is being used by another application. Please close other camera apps and try again.';
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'Camera Constraints Not Supported';
+        errorDescription = 'Your camera doesn\'t support the required settings. Trying with basic settings...';
+        
+        // Try again with minimal constraints
+        try {
+          const basicStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (videoRef.current) {
+            videoRef.current.srcObject = basicStream;
+            setStream(basicStream);
+            setCameraReady(true);
+            return;
+          }
+        } catch (basicError) {
+          errorDescription = 'Camera access failed even with basic settings.';
+        }
+      }
+
+      setCameraError(`${errorMessage}: ${errorDescription}`);
       toast({
-        title: "Camera Access Denied",
-        description: "Please allow camera access to scan for devices.",
+        title: errorMessage,
+        description: errorDescription,
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, selectedCameraId, checkCameraCapabilities]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
@@ -170,10 +303,22 @@ export default function DeviceScannerPage() {
   };
 
   useEffect(() => {
+    // Check camera capabilities on mount (only once)
+    let mounted = true;
+    
+    const initCamera = async () => {
+      if (mounted && availableCameras.length === 0) {
+        await checkCameraCapabilities();
+      }
+    };
+    
+    initCamera();
+    
     return () => {
+      mounted = false;
       stopCamera();
     };
-  }, [stopCamera]);
+  }, []); // Empty deps to run only once
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -221,14 +366,53 @@ export default function DeviceScannerPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Camera Selection */}
+                {availableCameras.length > 1 && (
+                  <div className="mb-4">
+                    <Select value={selectedCameraId} onValueChange={setSelectedCameraId}>
+                      <SelectTrigger className="w-full bg-gray-700 border-gray-600">
+                        <SelectValue placeholder="Select camera" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCameras.map((camera) => (
+                          <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                            {camera.label || `Camera ${camera.deviceId.slice(0, 8)}...`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                  {!cameraReady ? (
+                  {cameraError ? (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center px-4">
+                        <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
+                        <h3 className="font-medium text-white mb-2">Camera Error</h3>
+                        <p className="text-gray-300 text-sm mb-4 max-w-md">{cameraError}</p>
+                        <div className="space-y-2">
+                          <Button onClick={startCamera} className="bg-blue-600 hover:bg-blue-700">
+                            Retry Camera Access
+                          </Button>
+                          <div className="text-xs text-gray-400">
+                            Make sure you're using HTTPS or localhost, and camera permissions are granted.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : !cameraReady ? (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="text-center">
                         <Camera className="h-16 w-16 text-gray-500 mx-auto mb-4" />
                         <Button onClick={startCamera} className="bg-blue-600 hover:bg-blue-700">
                           Start Camera
                         </Button>
+                        {availableCameras.length > 0 && (
+                          <div className="mt-2 text-xs text-gray-400">
+                            {availableCameras.length} camera{availableCameras.length > 1 ? 's' : ''} detected
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -364,7 +548,15 @@ export default function DeviceScannerPage() {
                 <div>2. Point camera at your devices</div>
                 <div>3. Click "Scan for Devices"</div>
                 <div>4. Tap detected devices to add them</div>
+                <div className="pt-2 text-xs border-t border-gray-600 mt-3 pt-3">
+                  <strong>Tips for Laptops:</strong><br/>
+                  • Use front-facing camera if available<br/>
+                  • Ensure good lighting for better detection<br/>
+                  • Move closer to devices for clearer capture<br/>
+                  • Try different angles if detection fails
+                </div>
                 <div className="pt-2 text-xs">
+                  <strong>Scan Modes:</strong><br/>
                   <strong>Room Scan:</strong> Wide view for multiple devices<br/>
                   <strong>Focus Device:</strong> Close-up for single device
                 </div>

@@ -34,11 +34,24 @@ import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import { desc, eq } from "drizzle-orm";
+import { env, logger } from "./config";
 
-// Database is currently disabled due to connection issues
-// Using in-memory storage as fallback
+// Initialize database connection
 let db: any = null;
-console.log("Using in-memory storage for dashboard data");
+
+// Initialize database connection if DATABASE_URL is provided
+if (env.DATABASE_URL) {
+  try {
+    const sql = neon(env.DATABASE_URL);
+    db = drizzle(sql);
+    logger.info("Database connection established");
+  } catch (error) {
+    logger.error("Failed to initialize database connection:", error);
+    logger.warn("Falling back to in-memory storage");
+  }
+} else {
+  logger.info("Using in-memory storage (DATABASE_URL not configured)");
+}
 
 export interface IStorage {
   // Users
@@ -93,15 +106,30 @@ export interface IStorage {
   // Device Documentation
   getDeviceDocumentation(deviceId: string): Promise<DeviceDocumentation[]>;
   createDeviceDocumentation(doc: InsertDeviceDocumentation): Promise<DeviceDocumentation>;
+
+  // Emergency and Chat methods
+  createEmergencyAlert(alertData: any): Promise<any>;
+  getEmergencyAlerts(homeId: string): Promise<any[]>;
+  createChatMessage(messageData: any): Promise<any>;
+  getChatHistory(homeId: string): Promise<any[]>;
+  logActivity(activityData: any): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
-  private memStorage: Map<string, any> = new Map();
-  private useDatabase: boolean = false;
+  public memStorage: Map<string, any> = new Map();
+  public useDatabase: boolean = false;
 
   constructor() {
-    this.useDatabase = false; // Force memory storage for now
-    this.initializeSampleData();
+    // Enable database if connection is available
+    this.useDatabase = db !== null;
+    
+    if (this.useDatabase) {
+      logger.info("Storage initialized with database backend");
+      this.initializeDefaultData();
+    } else {
+      logger.info("Storage initialized with in-memory backend");
+      this.initializeSampleData();
+    }
   }
 
   private initializeSampleData() {
@@ -274,9 +302,9 @@ export class DatabaseStorage implements IStorage {
 
   private async initializeDefaultData() {
     try {
-      // Check if DATABASE_URL is configured
-      if (!process.env.DATABASE_URL) {
-        console.warn("DATABASE_URL not configured, using test data");
+      // Check if database is available
+      if (!db) {
+        logger.warn("Database not available, skipping initialization");
         return;
       }
 
@@ -324,7 +352,11 @@ export class DatabaseStorage implements IStorage {
         await db.insert(systemMetrics).values(metricsData);
       }
     } catch (error) {
-      console.error("Error initializing default data:", error);
+      logger.error("Error initializing default data:", error);
+      // Fallback to in-memory storage on error
+      logger.warn("Falling back to in-memory storage due to database error");
+      this.useDatabase = false;
+      this.initializeSampleData();
     }
   }
 
@@ -614,6 +646,7 @@ export class DatabaseStorage implements IStorage {
       status: insertHome.status || "active",
       createdAt: new Date(),
       lastActiveAt: new Date(),
+      mrr: insertHome.mrr || null,
     };
 
     if (!this.useDatabase) {
@@ -647,6 +680,7 @@ export class DatabaseStorage implements IStorage {
       id,
       status: insertHome.status || "active",
       createdAt: new Date(),
+      address: insertHome.address || null,
     };
 
     if (!this.useDatabase) {
@@ -698,6 +732,10 @@ export class DatabaseStorage implements IStorage {
       status: insertDevice.status || "active",
       metadata: insertDevice.metadata || {},
       createdAt: new Date(),
+      manufacturer: insertDevice.manufacturer || null,
+      model: insertDevice.model || null,
+      roomLocation: insertDevice.roomLocation || null,
+      discoveryMethod: insertDevice.discoveryMethod || null,
     };
 
     if (!this.useDatabase) {
@@ -739,6 +777,8 @@ export class DatabaseStorage implements IStorage {
       ...insertDoc,
       id,
       createdAt: new Date(),
+      content: insertDoc.content || null,
+      contentType: insertDoc.contentType || null,
     };
 
     if (!this.useDatabase) {
@@ -750,8 +790,9 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Add emergency and chat methods to DatabaseStorage
-DatabaseStorage.prototype.createEmergencyAlert = async function(alertData: any) {
+// Emergency and chat methods implementation
+export class DatabaseStorageExtended extends DatabaseStorage {
+  async createEmergencyAlert(alertData: any) {
   const id = randomUUID();
   const alert = {
     ...alertData,
@@ -771,7 +812,7 @@ DatabaseStorage.prototype.createEmergencyAlert = async function(alertData: any) 
   return alert;
 };
 
-DatabaseStorage.prototype.getEmergencyAlerts = async function(homeId: string) {
+  async getEmergencyAlerts(homeId: string) {
   if (!this.useDatabase) {
     if (!this.memStorage.has('emergencyAlerts')) return [];
     const alerts = Array.from(this.memStorage.get('emergencyAlerts').values()) as any[];
@@ -782,7 +823,7 @@ DatabaseStorage.prototype.getEmergencyAlerts = async function(homeId: string) {
   return [];
 };
 
-DatabaseStorage.prototype.createChatMessage = async function(messageData: any) {
+  async createChatMessage(messageData: any) {
   const id = randomUUID();
   const message = {
     ...messageData,
@@ -798,7 +839,7 @@ DatabaseStorage.prototype.createChatMessage = async function(messageData: any) {
   return message;
 };
 
-DatabaseStorage.prototype.getChatHistory = async function(homeId: string) {
+  async getChatHistory(homeId: string) {
   if (!this.useDatabase) {
     if (!this.memStorage.has('chatMessages')) return [];
     const messages = Array.from(this.memStorage.get('chatMessages').values()) as any[];
@@ -810,7 +851,7 @@ DatabaseStorage.prototype.getChatHistory = async function(homeId: string) {
   return [];
 };
 
-DatabaseStorage.prototype.logActivity = async function(activityData: any) {
+  async logActivity(activityData: any) {
   await this.createActivityLog({
     eventType: activityData.action,
     title: activityData.description,
@@ -821,4 +862,6 @@ DatabaseStorage.prototype.logActivity = async function(activityData: any) {
   });
 };
 
-export const storage = new DatabaseStorage();
+}
+
+export const storage = new DatabaseStorageExtended();

@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { env, logger } from "./config";
 import { 
   insertCriticalAlertSchema,
   insertActivityLogSchema,
@@ -23,15 +24,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   wss.on('connection', (ws) => {
     clients.add(ws);
-    console.log('Client connected to WebSocket');
+    logger.info('Client connected to WebSocket');
 
     ws.on('close', () => {
       clients.delete(ws);
-      console.log('Client disconnected from WebSocket');
+      logger.info('Client disconnected from WebSocket');
     });
 
     ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      logger.error('WebSocket error:', error);
       clients.delete(ws);
     });
   });
@@ -260,9 +261,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log('Dashboard metrics updated via real-time simulation');
+      logger.info('Dashboard metrics updated via real-time simulation');
     } catch (error) {
-      console.error('Error in real-time update simulation:', error);
+      logger.error('Error in real-time update simulation:', error);
     }
   }, 180000); // 3 minutes
 
@@ -557,10 +558,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         metadata: { urgency, location, guestContact }
       });
       
-      console.log(`🚨 EMERGENCY ALERT for Home ${homeId}: ${message} at ${location}`);
+      logger.info(`🚨 EMERGENCY ALERT for Home ${homeId}: ${message} at ${location}`);
       res.json(alert);
     } catch (error) {
-      console.error('Error creating emergency alert:', error);
+      logger.error('Error creating emergency alert:', error);
       res.status(500).json({ error: 'Failed to create emergency alert' });
     }
   });
@@ -570,7 +571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const alerts = await storage.getEmergencyAlerts(req.params.homeId);
       res.json(alerts);
     } catch (error) {
-      console.error('Error fetching emergency alerts:', error);
+      logger.error('Error fetching emergency alerts:', error);
       res.status(500).json({ error: 'Failed to fetch emergency alerts' });
     }
   });
@@ -594,7 +595,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         processingTime
       });
     } catch (error) {
-      console.error('Vision API error:', error);
+      logger.error('Vision API error:', error);
       res.status(500).json({ error: 'Failed to process image' });
     }
   });
@@ -619,7 +620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(chatMessage);
     } catch (error) {
-      console.error('Error processing AI question:', error);
+      logger.error('Error processing AI question:', error);
       res.status(500).json({ error: 'Failed to process question' });
     }
   });
@@ -629,7 +630,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const history = await storage.getChatHistory(req.params.homeId);
       res.json(history);
     } catch (error) {
-      console.error('Error fetching chat history:', error);
+      logger.error('Error fetching chat history:', error);
       res.status(500).json({ error: 'Failed to fetch chat history' });
     }
   });
@@ -655,7 +656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(manual);
     } catch (error) {
-      console.error('Error fetching device manual:', error);
+      logger.error('Error fetching device manual:', error);
       res.status(500).json({ error: 'Failed to fetch device manual' });
     }
   });
@@ -718,8 +719,13 @@ async function generateAIResponse(question: string, context: any, homeId: string
 // OpenAI Vision Processing Function  
 async function processDeviceImage(imageData: string, scanType: string, context: any) {
   try {
+    // Check if OpenAI API key is available
+    if (!env.OPENAI_API_KEY) {
+      throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.');
+    }
+
     const { default: OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
     const prompt = `You are an expert at identifying smart home devices from images. Analyze this image and identify any smart home devices visible.
 
@@ -792,7 +798,7 @@ Return your response as a JSON object with this structure:
 
     return result;
   } catch (error) {
-    console.error('OpenAI Vision API error:', error);
+    logger.error('OpenAI Vision API error:', error);
     
     // Fallback response for demo purposes
     return {

@@ -16,10 +16,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       
+      // Connecting to WebSocket
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
-        console.log("WebSocket connected");
         setIsConnected(true);
         options.onConnect?.();
       };
@@ -29,12 +29,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           const data = JSON.parse(event.data);
           options.onMessage?.(data);
         } catch (error) {
-          console.error("Failed to parse WebSocket message:", error);
+          // Failed to parse WebSocket message
         }
       };
 
       ws.current.onclose = () => {
-        console.log("WebSocket disconnected");
         setIsConnected(false);
         options.onDisconnect?.();
         
@@ -47,11 +46,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       };
 
       ws.current.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        // WebSocket error occurred
       };
     } catch (error) {
-      console.error("Failed to connect to WebSocket:", error);
-      // Try to reconnect after 5 seconds
+      // Failed to connect to WebSocket, trying to reconnect after 5 seconds
       reconnectTimeout.current = setTimeout(connect, 5000);
     }
   };
