@@ -424,6 +424,91 @@ export class DatabaseStorage implements IStorage {
     logger.info(`Seeded ${categories.length} categories, ${brands.length} brands, and ${models.length} models`);
   }
 
+  private async seedDeviceTaxonomyToDatabase() {
+    logger.info('Seeding comprehensive device taxonomy to database...');
+    
+    try {
+      // Check if categories already exist to avoid duplicates
+      const existingCategories = await db.select().from(deviceCategories).limit(1);
+      if (existingCategories.length > 0) {
+        logger.info('Device taxonomy already exists in database, skipping seeding');
+        return;
+      }
+
+      const categoriesToInsert = [];
+      const brandsToInsert = [];
+      const modelsToInsert = [];
+      
+      // Prepare all taxonomy data for batch insertion
+      getAllCategories().forEach((taxonomyCategory) => {
+        const categoryId = randomUUID();
+        
+        // Prepare category for insertion
+        categoriesToInsert.push({
+          id: categoryId,
+          name: taxonomyCategory.name,
+          displayName: taxonomyCategory.displayName,
+          description: taxonomyCategory.description || null,
+          icon: taxonomyCategory.icon || null,
+          isCustom: false,
+          isActive: true,
+          sortOrder: taxonomyCategory.sortOrder,
+          createdAt: new Date(),
+        });
+        
+        // Prepare brands for this category
+        Object.entries(taxonomyCategory.brands).forEach(([brandKey, brandData]) => {
+          const brandId = randomUUID();
+          
+          brandsToInsert.push({
+            id: brandId,
+            categoryId: categoryId,
+            name: brandKey,
+            displayName: brandData.displayName,
+            website: brandData.website || null,
+            supportUrl: brandData.supportUrl || null,
+            isActive: true,
+            createdAt: new Date(),
+          });
+          
+          // Prepare models for this brand
+          brandData.commonModels.forEach(modelName => {
+            modelsToInsert.push({
+              id: randomUUID(),
+              brandId: brandId,
+              name: modelName,
+              displayName: modelName,
+              modelNumber: null,
+              description: null,
+              specifications: {},
+              manualUrl: null,
+              supportUrl: null,
+              imageUrl: null,
+              isActive: true,
+              createdAt: new Date(),
+            });
+          });
+        });
+      });
+      
+      // Insert all data in proper order (categories -> brands -> models)
+      logger.info(`Inserting ${categoriesToInsert.length} categories...`);
+      await db.insert(deviceCategories).values(categoriesToInsert);
+      
+      logger.info(`Inserting ${brandsToInsert.length} brands...`);
+      await db.insert(deviceBrands).values(brandsToInsert);
+      
+      logger.info(`Inserting ${modelsToInsert.length} models...`);
+      await db.insert(deviceModels).values(modelsToInsert);
+      
+      logger.info(`Successfully seeded ${categoriesToInsert.length} categories, ${brandsToInsert.length} brands, and ${modelsToInsert.length} models to database`);
+      
+    } catch (error) {
+      logger.error('Error seeding device taxonomy to database:', error);
+      throw error;
+    }
+  }
+
   private async initializeDefaultData() {
     try {
       // Check if database is available
@@ -475,6 +560,9 @@ export class DatabaseStorage implements IStorage {
 
         await db.insert(systemMetrics).values(metricsData);
       }
+
+      // Initialize comprehensive device taxonomy
+      await this.seedDeviceTaxonomyToDatabase();
     } catch (error) {
       logger.error("Error initializing default data:", error);
       // Fallback to in-memory storage on error

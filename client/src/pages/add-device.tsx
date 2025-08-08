@@ -106,7 +106,7 @@ export default function AddDevicePage() {
   const { data: categories = [], isLoading: categoriesLoading } = useQuery({
     queryKey: ['device-categories'],
     queryFn: async () => {
-      const response = await apiRequest('/api/device-categories');
+      const response = await apiRequest('GET', '/api/device-categories');
       return response.json();
     }
   });
@@ -115,7 +115,7 @@ export default function AddDevicePage() {
   const { data: brands = [], isLoading: brandsLoading } = useQuery({
     queryKey: ['device-brands', formData.categoryId],
     queryFn: async () => {
-      const response = await apiRequest(`/api/device-brands?categoryId=${formData.categoryId}`);
+      const response = await apiRequest('GET', `/api/device-brands?categoryId=${formData.categoryId}`);
       return response.json();
     },
     enabled: !!formData.categoryId && !isCustomCategory
@@ -125,7 +125,7 @@ export default function AddDevicePage() {
   const { data: models = [], isLoading: modelsLoading } = useQuery({
     queryKey: ['device-models', formData.brandId],
     queryFn: async () => {
-      const response = await apiRequest(`/api/device-models/${formData.brandId}`);
+      const response = await apiRequest('GET', `/api/device-models/${formData.brandId}`);
       return response.json();
     },
     enabled: !!formData.brandId && !isCustomBrand
@@ -133,11 +133,7 @@ export default function AddDevicePage() {
 
   const createDeviceMutation = useMutation({
     mutationFn: async (deviceData: any) => {
-      const response = await apiRequest(`/api/homes/${homeId}/devices`, {
-        method: 'POST',
-        body: JSON.stringify(deviceData),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      const response = await apiRequest('POST', `/api/homes/${homeId}/devices`, deviceData);
       return response.json();
     },
     onSuccess: () => {
