@@ -19,6 +19,12 @@ import {
   type InsertDevice,
   type DeviceDocumentation,
   type InsertDeviceDocumentation,
+  type DeviceCategory,
+  type InsertDeviceCategory,
+  type DeviceBrand,
+  type InsertDeviceBrand,
+  type DeviceModel,
+  type InsertDeviceModel,
   users,
   systemMetrics,
   systemHealth,
@@ -28,13 +34,23 @@ import {
   homes,
   customerHomes,
   devices,
-  deviceDocumentation
+  deviceDocumentation,
+  deviceCategories,
+  deviceBrands,
+  deviceModels
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import { desc, eq } from "drizzle-orm";
 import { env, logger } from "./config";
+import { 
+  COMPREHENSIVE_DEVICE_TAXONOMY, 
+  getAllCategories,
+  getCategoryByName,
+  getBrandsForCategory,
+  getModelsForBrand
+} from "@shared/deviceTaxonomy";
 
 // Initialize database connection
 let db: any = null;
@@ -107,6 +123,15 @@ export interface IStorage {
   getDeviceDocumentation(deviceId: string): Promise<DeviceDocumentation[]>;
   createDeviceDocumentation(doc: InsertDeviceDocumentation): Promise<DeviceDocumentation>;
 
+  // Device Taxonomy methods
+  getDeviceCategories(): Promise<DeviceCategory[]>;
+  getDeviceBrands(categoryId?: string): Promise<DeviceBrand[]>;
+  getDeviceModels(brandId: string): Promise<DeviceModel[]>;
+  createDeviceCategory(category: InsertDeviceCategory): Promise<DeviceCategory>;
+  createDeviceBrand(brand: InsertDeviceBrand): Promise<DeviceBrand>;
+  createDeviceModel(model: InsertDeviceModel): Promise<DeviceModel>;
+  searchDevices(query: string): Promise<Device[]>;
+
   // Emergency and Chat methods
   createEmergencyAlert(alertData: any): Promise<any>;
   getEmergencyAlerts(homeId: string): Promise<any[]>;
@@ -144,6 +169,14 @@ export class DatabaseStorage implements IStorage {
     this.memStorage.set('customerHomes', []);
     this.memStorage.set('devices', []);
     this.memStorage.set('deviceDocumentation', []);
+    
+    // Initialize device taxonomy collections
+    this.memStorage.set('deviceCategories', []);
+    this.memStorage.set('deviceBrands', []);
+    this.memStorage.set('deviceModels', []);
+    
+    // Seed comprehensive device taxonomy
+    this.seedDeviceTaxonomy();
 
     // Create sample emergency settings with proper structure
     const emergencySettingsData = [
@@ -259,45 +292,136 @@ export class DatabaseStorage implements IStorage {
       {
         id: "device-1",
         homeId: "home-1",
+        categoryId: null,
+        brandId: null,
+        modelId: null,
         name: "Living Room TV",
-        manufacturer: "Samsung",
-        model: "QN65Q70T",
-        category: "entertainment",
+        customCategory: "TV",
+        customBrand: "Samsung",
+        customModel: "QN65Q70T",
         roomLocation: "Living Room",
         status: "active",
         discoveryMethod: "wifi_scan",
         metadata: { ipAddress: "192.168.1.100" },
+        notes: null,
+        purchaseDate: null,
+        warrantyExpiry: null,
         createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000),
       },
       {
         id: "device-2",
         homeId: "home-1",
+        categoryId: null,
+        brandId: null,
+        modelId: null,
         name: "Nest Thermostat",
-        manufacturer: "Google",
-        model: "Learning Thermostat",
-        category: "climate",
+        customCategory: "Thermostat",
+        customBrand: "Google",
+        customModel: "Learning Thermostat",
         roomLocation: "Hallway",
         status: "active",
         discoveryMethod: "manual",
         metadata: { temperature: 72 },
+        notes: null,
+        purchaseDate: null,
+        warrantyExpiry: null,
         createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
       },
       {
         id: "device-3",
         homeId: "home-2",
+        categoryId: null,
+        brandId: null,
+        modelId: null,
         name: "Kitchen Echo",
-        manufacturer: "Amazon",
-        model: "Echo Dot 4th Gen",
-        category: "voice_assistant",
+        customCategory: "Voice Assistant",
+        customBrand: "Amazon",
+        customModel: "Echo Dot 4th Gen",
         roomLocation: "Kitchen",
         status: "active",
         discoveryMethod: "manual",
         metadata: {},
+        notes: null,
+        purchaseDate: null,
+        warrantyExpiry: null,
         createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
       },
     ];
 
     this.memStorage.set('devices', sampleDevices);
+  }
+
+  private seedDeviceTaxonomy() {
+    logger.info('Seeding comprehensive device taxonomy...');
+    
+    const categories: DeviceCategory[] = [];
+    const brands: DeviceBrand[] = [];
+    const models: DeviceModel[] = [];
+    
+    // Seed all categories, brands, and models from taxonomy
+    getAllCategories().forEach((taxonomyCategory, index) => {
+      const categoryId = randomUUID();
+      
+      // Create category
+      const category: DeviceCategory = {
+        id: categoryId,
+        name: taxonomyCategory.name,
+        displayName: taxonomyCategory.displayName,
+        description: taxonomyCategory.description || null,
+        icon: taxonomyCategory.icon || null,
+        isCustom: false,
+        isActive: true,
+        sortOrder: taxonomyCategory.sortOrder,
+        createdAt: new Date(),
+      };
+      categories.push(category);
+      
+      // Create brands for this category
+      Object.entries(taxonomyCategory.brands).forEach(([brandKey, brandData]) => {
+        const brandId = randomUUID();
+        
+        const brand: DeviceBrand = {
+          id: brandId,
+          categoryId: categoryId || null,
+          name: brandKey,
+          displayName: brandData.displayName,
+          website: brandData.website || null,
+          supportUrl: brandData.supportUrl || null,
+          isActive: true,
+          createdAt: new Date(),
+        };
+        brands.push(brand);
+        
+        // Create models for this brand
+        brandData.commonModels.forEach(modelName => {
+          const model: DeviceModel = {
+            id: randomUUID(),
+            brandId: brandId,
+            name: modelName,
+            displayName: modelName,
+            modelNumber: null,
+            description: null,
+            specifications: {},
+            manualUrl: null,
+            supportUrl: null,
+            imageUrl: null,
+            isActive: true,
+            createdAt: new Date(),
+          };
+          models.push(model);
+        });
+      });
+    });
+    
+    // Store in memory
+    this.memStorage.set('deviceCategories', categories);
+    this.memStorage.set('deviceBrands', brands);
+    this.memStorage.set('deviceModels', models);
+    
+    logger.info(`Seeded ${categories.length} categories, ${brands.length} brands, and ${models.length} models`);
   }
 
   private async initializeDefaultData() {
@@ -732,10 +856,12 @@ export class DatabaseStorage implements IStorage {
       status: insertDevice.status || "active",
       metadata: insertDevice.metadata || {},
       createdAt: new Date(),
-      manufacturer: insertDevice.manufacturer || null,
-      model: insertDevice.model || null,
+      updatedAt: new Date(),
       roomLocation: insertDevice.roomLocation || null,
       discoveryMethod: insertDevice.discoveryMethod || null,
+      notes: insertDevice.notes || null,
+      purchaseDate: insertDevice.purchaseDate || null,
+      warrantyExpiry: insertDevice.warrantyExpiry || null,
     };
 
     if (!this.useDatabase) {
@@ -852,15 +978,123 @@ export class DatabaseStorageExtended extends DatabaseStorage {
 };
 
   async logActivity(activityData: any) {
-  await this.createActivityLog({
-    eventType: activityData.action,
-    title: activityData.description,
-    description: activityData.description,
-    severity: activityData.severity,
-    userId: null,
-    metadata: activityData.metadata || {},
-  });
-};
+    await this.createActivityLog({
+      eventType: activityData.action,
+      title: activityData.description,
+      description: activityData.description,
+      severity: activityData.severity,
+      userId: null,
+      metadata: activityData.metadata || {},
+    });
+  }
+
+  // Device Taxonomy Methods
+  async getDeviceCategories(): Promise<DeviceCategory[]> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('deviceCategories')
+        .sort((a: DeviceCategory, b: DeviceCategory) => a.sortOrder - b.sortOrder);
+    }
+    return await db.select().from(deviceCategories).orderBy(deviceCategories.sortOrder);
+  }
+
+  async getDeviceBrands(categoryId?: string): Promise<DeviceBrand[]> {
+    if (!this.useDatabase) {
+      const brands = this.memStorage.get('deviceBrands');
+      return categoryId 
+        ? brands.filter((brand: DeviceBrand) => brand.categoryId === categoryId)
+        : brands;
+    }
+    return categoryId 
+      ? await db.select().from(deviceBrands).where(eq(deviceBrands.categoryId, categoryId))
+      : await db.select().from(deviceBrands);
+  }
+
+  async getDeviceModels(brandId: string): Promise<DeviceModel[]> {
+    if (!this.useDatabase) {
+      return this.memStorage.get('deviceModels')
+        .filter((model: DeviceModel) => model.brandId === brandId);
+    }
+    return await db.select().from(deviceModels).where(eq(deviceModels.brandId, brandId));
+  }
+
+  async createDeviceCategory(insertCategory: InsertDeviceCategory): Promise<DeviceCategory> {
+    const id = randomUUID();
+    const category: DeviceCategory = {
+      ...insertCategory,
+      id,
+      isCustom: insertCategory.isCustom ?? false,
+      isActive: insertCategory.isActive ?? true,
+      sortOrder: insertCategory.sortOrder ?? 999,
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('deviceCategories').push(category);
+      return category;
+    }
+    const [dbCategory] = await db.insert(deviceCategories).values(insertCategory).returning();
+    return dbCategory;
+  }
+
+  async createDeviceBrand(insertBrand: InsertDeviceBrand): Promise<DeviceBrand> {
+    const id = randomUUID();
+    const brand: DeviceBrand = {
+      ...insertBrand,
+      id,
+      website: insertBrand.website || null,
+      supportUrl: insertBrand.supportUrl || null,
+      isActive: insertBrand.isActive ?? true,
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('deviceBrands').push(brand);
+      return brand;
+    }
+    const [dbBrand] = await db.insert(deviceBrands).values(insertBrand).returning();
+    return dbBrand;
+  }
+
+  async createDeviceModel(insertModel: InsertDeviceModel): Promise<DeviceModel> {
+    const id = randomUUID();
+    const model: DeviceModel = {
+      ...insertModel,
+      id,
+      displayName: insertModel.displayName || insertModel.name,
+      modelNumber: insertModel.modelNumber || null,
+      description: insertModel.description || null,
+      specifications: insertModel.specifications || {},
+      manualUrl: insertModel.manualUrl || null,
+      supportUrl: insertModel.supportUrl || null,
+      imageUrl: insertModel.imageUrl || null,
+      isActive: insertModel.isActive ?? true,
+      createdAt: new Date(),
+    };
+
+    if (!this.useDatabase) {
+      this.memStorage.get('deviceModels').push(model);
+      return model;
+    }
+    const [dbModel] = await db.insert(deviceModels).values(insertModel).returning();
+    return dbModel;
+  }
+
+  async searchDevices(query: string): Promise<Device[]> {
+    const searchTerm = query.toLowerCase();
+    
+    if (!this.useDatabase) {
+      const devices = this.memStorage.get('devices') as Device[];
+      return devices.filter((device: Device) => 
+        device.name.toLowerCase().includes(searchTerm) ||
+        (device.customBrand && device.customBrand.toLowerCase().includes(searchTerm)) ||
+        (device.customModel && device.customModel.toLowerCase().includes(searchTerm)) ||
+        (device.customCategory && device.customCategory.toLowerCase().includes(searchTerm))
+      );
+    }
+    
+    // For database, you would implement SQL search here
+    return [];
+  }
 
 }
 

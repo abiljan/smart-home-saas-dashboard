@@ -420,6 +420,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Device Taxonomy API Endpoints
+  app.get("/api/device-categories", async (req, res) => {
+    try {
+      const categories = await storage.getDeviceCategories();
+      res.json(categories);
+    } catch (error) {
+      logger.error("Error fetching device categories:", error);
+      res.status(500).json({ message: "Failed to fetch device categories" });
+    }
+  });
+
+  app.get("/api/device-brands", async (req, res) => {
+    try {
+      const categoryId = req.query.categoryId as string;
+      const brands = await storage.getDeviceBrands(categoryId);
+      res.json(brands);
+    } catch (error) {
+      logger.error("Error fetching device brands:", error);
+      res.status(500).json({ message: "Failed to fetch device brands" });
+    }
+  });
+
+  app.get("/api/device-models/:brandId", async (req, res) => {
+    try {
+      const models = await storage.getDeviceModels(req.params.brandId);
+      res.json(models);
+    } catch (error) {
+      logger.error("Error fetching device models:", error);
+      res.status(500).json({ message: "Failed to fetch device models" });
+    }
+  });
+
+  app.post("/api/device-categories", async (req, res) => {
+    try {
+      const category = await storage.createDeviceCategory(req.body);
+      res.status(201).json(category);
+    } catch (error) {
+      logger.error("Error creating device category:", error);
+      res.status(500).json({ message: "Failed to create device category" });
+    }
+  });
+
+  app.post("/api/device-brands", async (req, res) => {
+    try {
+      const brand = await storage.createDeviceBrand(req.body);
+      res.status(201).json(brand);
+    } catch (error) {
+      logger.error("Error creating device brand:", error);
+      res.status(500).json({ message: "Failed to create device brand" });
+    }
+  });
+
+  app.post("/api/device-models", async (req, res) => {
+    try {
+      const model = await storage.createDeviceModel(req.body);
+      res.status(201).json(model);
+    } catch (error) {
+      logger.error("Error creating device model:", error);
+      res.status(500).json({ message: "Failed to create device model" });
+    }
+  });
+
+  app.get("/api/devices/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query || query.length < 2) {
+        return res.json([]);
+      }
+      const devices = await storage.searchDevices(query);
+      res.json(devices);
+    } catch (error) {
+      logger.error("Error searching devices:", error);
+      res.status(500).json({ message: "Failed to search devices" });
+    }
+  });
+
   // Guest Interface API
   app.get("/api/homes/:homeId/guest-view", async (req, res) => {
     try {

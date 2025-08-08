@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,84 +7,71 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Zap, Tv, Thermometer, Speaker, Camera, Lightbulb, Router } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { ArrowLeft, Plus, Settings, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-// Device database with common devices
-const deviceCategories = {
-  "TV": {
-    icon: Tv,
-    brands: ["Samsung", "LG", "Sony", "TCL", "Roku", "Apple TV", "Fire TV"],
-    commonModels: {
-      "Samsung": ["QN65Q70T", "UN55TU7000", "QN75Q80T", "Frame TV"],
-      "LG": ["OLED55C1PUB", "55UP7000PUA", "OLED65G1PUA"],
-      "Sony": ["XBR55X900H", "XBR65A8H", "KD55X85K"],
-      "TCL": ["55R635", "65R646", "75R646"]
-    }
-  },
-  "Thermostat": {
-    icon: Thermometer,
-    brands: ["Nest", "Honeywell", "Ecobee", "Emerson"],
-    commonModels: {
-      "Nest": ["Learning Thermostat", "Thermostat E", "Nest Hub"],
-      "Honeywell": ["T6 Pro", "T9", "T10 Pro"],
-      "Ecobee": ["SmartThermostat", "Ecobee4", "Ecobee3 Lite"]
-    }
-  },
-  "Speaker": {
-    icon: Speaker,
-    brands: ["Amazon", "Google", "Apple", "Sonos", "Bose"],
-    commonModels: {
-      "Amazon": ["Echo Dot", "Echo", "Echo Show", "Echo Studio"],
-      "Google": ["Nest Mini", "Nest Audio", "Nest Hub", "Nest Hub Max"],
-      "Apple": ["HomePod", "HomePod Mini"],
-      "Sonos": ["One", "Beam", "Arc", "Move"]
-    }
-  },
-  "Security Camera": {
-    icon: Camera,
-    brands: ["Ring", "Nest", "Arlo", "Wyze", "Blink"],
-    commonModels: {
-      "Ring": ["Video Doorbell", "Stick Up Cam", "Spotlight Cam"],
-      "Nest": ["Cam Indoor", "Cam Outdoor", "Doorbell"],
-      "Arlo": ["Pro 4", "Essential", "Ultra 2"]
-    }
-  },
-  "Smart Light": {
-    icon: Lightbulb,
-    brands: ["Philips Hue", "LIFX", "TP-Link Kasa", "Wyze"],
-    commonModels: {
-      "Philips Hue": ["White Bulb", "Color Bulb", "Light Strip", "Dimmer Switch"],
-      "LIFX": ["Color Bulb", "White Bulb", "Light Strip"],
-      "TP-Link Kasa": ["Smart Bulb", "Smart Switch", "Smart Dimmer"]
-    }
-  },
-  "Router/WiFi": {
-    icon: Router,
-    brands: ["Eero", "Netgear", "Linksys", "ASUS", "TP-Link"],
-    commonModels: {
-      "Eero": ["Pro 6", "Pro 6E", "Beacon"],
-      "Netgear": ["Nighthawk", "Orbi", "Nighthawk Pro"],
-      "Linksys": ["Velop", "Max-Stream", "EA Series"]
-    }
-  }
-};
+// Types from the database schema
+interface DeviceCategory {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  icon: string;
+  isCustom: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+interface DeviceBrand {
+  id: string;
+  categoryId: string;
+  name: string;
+  displayName: string;
+  website?: string;
+  supportUrl?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface DeviceModel {
+  id: string;
+  brandId: string;
+  name: string;
+  displayName: string;
+  modelNumber?: string;
+  description?: string;
+  specifications?: Record<string, any>;
+  manualUrl?: string;
+  supportUrl?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface DeviceFormData {
+  name: string;
+  categoryId: string;
+  brandId: string;
+  modelId: string;
+  customCategory: string;
+  customBrand: string;
+  customModel: string;
+  roomLocation: string;
+  discoveryMethod: "manual" | "wifi_scan" | "barcode" | "visual";
+  notes: string;
+  purchaseDate: string;
+  warrantyExpiry: string;
+}
 
 const commonRooms = [
   "Living Room", "Kitchen", "Master Bedroom", "Guest Bedroom", 
   "Bathroom", "Dining Room", "Home Office", "Basement", 
-  "Garage", "Hallway", "Entryway", "Patio/Deck"
+  "Garage", "Hallway", "Entryway", "Patio/Deck", "Other"
 ];
-
-interface DeviceFormData {
-  name: string;
-  category: string;
-  manufacturer: string;
-  model: string;
-  roomLocation: string;
-  customName: string;
-}
 
 export default function AddDevicePage() {
   const [location] = useLocation();
@@ -95,20 +82,64 @@ export default function AddDevicePage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<DeviceFormData>({
     name: '',
-    category: '',
-    manufacturer: '',
-    model: '',
+    categoryId: '',
+    brandId: '',
+    modelId: '',
+    customCategory: '',
+    customBrand: '',
+    customModel: '',
     roomLocation: '',
-    customName: ''
+    discoveryMethod: 'manual',
+    notes: '',
+    purchaseDate: '',
+    warrantyExpiry: ''
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState<DeviceCategory | null>(null);
+  const [selectedBrand, setSelectedBrand] = useState<DeviceBrand | null>(null);
+  const [selectedModel, setSelectedModel] = useState<DeviceModel | null>(null);
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [isCustomBrand, setIsCustomBrand] = useState(false);
+  const [isCustomModel, setIsCustomModel] = useState(false);
+
+  // Fetch device categories
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
+    queryKey: ['device-categories'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/device-categories');
+      return response.json();
+    }
+  });
+
+  // Fetch brands for selected category
+  const { data: brands = [], isLoading: brandsLoading } = useQuery({
+    queryKey: ['device-brands', formData.categoryId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/device-brands?categoryId=${formData.categoryId}`);
+      return response.json();
+    },
+    enabled: !!formData.categoryId && !isCustomCategory
+  });
+
+  // Fetch models for selected brand
+  const { data: models = [], isLoading: modelsLoading } = useQuery({
+    queryKey: ['device-models', formData.brandId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/device-models/${formData.brandId}`);
+      return response.json();
+    },
+    enabled: !!formData.brandId && !isCustomBrand
   });
 
   const createDeviceMutation = useMutation({
-    mutationFn: (deviceData: any) =>
-      apiRequest(`/api/homes/${homeId}/devices`, {
+    mutationFn: async (deviceData: any) => {
+      const response = await apiRequest(`/api/homes/${homeId}/devices`, {
         method: 'POST',
         body: JSON.stringify(deviceData),
         headers: { 'Content-Type': 'application/json' }
-      }),
+      });
+      return response.json();
+    },
     onSuccess: () => {
       toast({
         title: "Device Added Successfully",
@@ -118,268 +149,482 @@ export default function AddDevicePage() {
       // Navigate back to home detail
       window.history.back();
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
-        title: "Failed to Add Device",
-        description: "Please try again or contact support if the problem persists.",
-        variant: "destructive",
+        title: "Error Adding Device",
+        description: error.message || "Failed to add device. Please try again.",
+        variant: "destructive"
       });
     }
   });
 
-  const handleSubmit = () => {
-    const deviceName = formData.customName || 
-      `${formData.roomLocation} ${formData.category}` ||
-      `${formData.manufacturer} ${formData.model}`;
+  // Handle category selection
+  const handleCategorySelect = (categoryId: string) => {
+    if (categoryId === 'custom') {
+      setIsCustomCategory(true);
+      setFormData(prev => ({ 
+        ...prev, 
+        categoryId: '', 
+        brandId: '', 
+        modelId: '',
+        customBrand: '',
+        customModel: ''
+      }));
+      setSelectedCategory(null);
+      setSelectedBrand(null);
+      setSelectedModel(null);
+    } else {
+      setIsCustomCategory(false);
+      const category = categories.find((cat: DeviceCategory) => cat.id === categoryId);
+      setSelectedCategory(category);
+      setFormData(prev => ({ 
+        ...prev, 
+        categoryId, 
+        brandId: '', 
+        modelId: '',
+        customCategory: '',
+        customBrand: '',
+        customModel: ''
+      }));
+      setSelectedBrand(null);
+      setSelectedModel(null);
+    }
+    setIsCustomBrand(false);
+    setIsCustomModel(false);
+  };
 
+  // Handle brand selection
+  const handleBrandSelect = (brandId: string) => {
+    if (brandId === 'custom') {
+      setIsCustomBrand(true);
+      setFormData(prev => ({ ...prev, brandId: '', modelId: '', customModel: '' }));
+      setSelectedBrand(null);
+      setSelectedModel(null);
+    } else {
+      setIsCustomBrand(false);
+      const brand = brands.find((br: DeviceBrand) => br.id === brandId);
+      setSelectedBrand(brand);
+      setFormData(prev => ({ ...prev, brandId, modelId: '', customBrand: '', customModel: '' }));
+      setSelectedModel(null);
+    }
+    setIsCustomModel(false);
+  };
+
+  // Handle model selection
+  const handleModelSelect = (modelId: string) => {
+    if (modelId === 'custom') {
+      setIsCustomModel(true);
+      setFormData(prev => ({ ...prev, modelId: '' }));
+      setSelectedModel(null);
+    } else {
+      setIsCustomModel(false);
+      const model = models.find((mod: DeviceModel) => mod.id === modelId);
+      setSelectedModel(model);
+      setFormData(prev => ({ ...prev, modelId, customModel: '' }));
+      
+      // Auto-populate device name if not set
+      if (!formData.name && model && selectedBrand) {
+        setFormData(prev => ({ 
+          ...prev, 
+          name: `${selectedBrand.displayName} ${model.displayName}` 
+        }));
+      }
+    }
+  };
+
+  // Handle form submission
+  const handleSubmit = () => {
+    // Validate required fields
+    if (!formData.name) {
+      toast({
+        title: "Name Required",
+        description: "Please provide a name for the device.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!isCustomCategory && !formData.categoryId) {
+      toast({
+        title: "Category Required",
+        description: "Please select a device category.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (isCustomCategory && !formData.customCategory) {
+      toast({
+        title: "Custom Category Required",
+        description: "Please specify a custom category.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Prepare device data for submission
     const deviceData = {
-      name: deviceName,
-      manufacturer: formData.manufacturer,
-      model: formData.model,
+      name: formData.name,
+      categoryId: !isCustomCategory ? formData.categoryId : null,
+      brandId: !isCustomBrand && formData.brandId ? formData.brandId : null,
+      modelId: !isCustomModel && formData.modelId ? formData.modelId : null,
+      customCategory: isCustomCategory ? formData.customCategory : null,
+      customBrand: isCustomBrand ? formData.customBrand : null,
+      customModel: isCustomModel ? formData.customModel : null,
       roomLocation: formData.roomLocation,
-      status: 'online',
-      discoveryMethod: 'manual_guided',
+      discoveryMethod: formData.discoveryMethod,
+      notes: formData.notes,
+      purchaseDate: formData.purchaseDate || null,
+      warrantyExpiry: formData.warrantyExpiry || null,
       metadata: {
-        category: formData.category,
-        addedViaWizard: true,
-        customNotes: ''
+        selectedCategory: selectedCategory?.displayName,
+        selectedBrand: selectedBrand?.displayName,
+        selectedModel: selectedModel?.displayName
       }
     };
 
     createDeviceMutation.mutate(deviceData);
   };
 
-  const isStepComplete = (step: number): boolean => {
-    switch (step) {
-      case 1: return !!formData.category;
-      case 2: return !!formData.manufacturer;
-      case 3: return !!formData.roomLocation;
-      case 4: return true; // Optional step
-      default: return false;
-    }
-  };
+  const canProceedToStep2 = isCustomCategory ? 
+    formData.customCategory : 
+    formData.categoryId;
 
-  const canProceed = isStepComplete(currentStep);
-  const selectedCategory = deviceCategories[formData.category as keyof typeof deviceCategories];
+  const canProceedToStep3 = canProceedToStep2 && (
+    isCustomBrand ? 
+      formData.customBrand : 
+      (formData.brandId || isCustomCategory)
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+        <div className="mb-6">
           <Link href={`/homes/${homeId}`}>
-            <Button variant="outline" size="sm">
+            <Button variant="ghost" className="mb-4">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Home
             </Button>
           </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Add New Device</h1>
-            <p className="text-gray-600">Simple 4-step device setup with automatic documentation</p>
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900">Add New Device</h1>
+          <p className="text-gray-600 mt-2">Add a device to your smart home with comprehensive device recognition</p>
         </div>
 
         {/* Progress Indicator */}
         <div className="mb-8">
-          <div className="flex items-center justify-between">
-            {[1, 2, 3, 4].map((step) => (
+          <div className="flex items-center space-x-4">
+            {[1, 2, 3].map((step) => (
               <div key={step} className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step <= currentStep ? 'bg-blue-600 text-white' : 
-                  step <= currentStep + 1 && isStepComplete(step - 1) ? 'bg-blue-100 text-blue-600' : 
-                  'bg-gray-200 text-gray-500'
+                  currentStep >= step ? 'bg-blue-600 text-white' : 
+                  (step === 1 && canProceedToStep2) || (step === 2 && canProceedToStep3) ? 'bg-green-600 text-white' :
+                  'bg-gray-300 text-gray-600'
                 }`}>
-                  {step}
+                  {((step === 1 && canProceedToStep2) || (step === 2 && canProceedToStep3) || currentStep > step) ? 
+                    <CheckCircle2 className="h-4 w-4" /> : step}
                 </div>
-                {step < 4 && (
-                  <div className={`w-16 h-1 mx-2 ${
-                    step < currentStep ? 'bg-blue-600' : 'bg-gray-200'
-                  }`} />
-                )}
+                {step < 3 && <div className="w-12 h-0.5 bg-gray-300" />}
               </div>
             ))}
           </div>
           <div className="flex justify-between mt-2 text-sm text-gray-600">
             <span>Device Type</span>
-            <span>Brand</span>
-            <span>Location</span>
-            <span>Review</span>
+            <span>Brand & Model</span>
+            <span>Details</span>
           </div>
         </div>
 
+        {/* Step Content */}
         <Card>
-          <CardHeader>
-            <CardTitle>
-              Step {currentStep}: {
-                currentStep === 1 ? 'What type of device?' :
-                currentStep === 2 ? 'What brand?' :
-                currentStep === 3 ? 'Where is it located?' :
-                'Review and customize'
-              }
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="p-6">
             {/* Step 1: Device Category */}
             {currentStep === 1 && (
-              <div className="space-y-4">
-                <Label>Select device category:</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {Object.entries(deviceCategories).map(([category, config]) => {
-                    const IconComponent = config.icon;
-                    return (
-                      <button
-                        key={category}
-                        onClick={() => setFormData(prev => ({ ...prev, category }))}
-                        className={`p-4 border-2 rounded-lg text-center transition-colors ${
-                          formData.category === category
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <IconComponent className="h-8 w-8 mx-auto mb-2" />
-                        <div className="font-medium">{category}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Brand Selection */}
-            {currentStep === 2 && selectedCategory && (
-              <div className="space-y-4">
-                <Label>Select brand for {formData.category}:</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {selectedCategory.brands.map((brand) => (
-                    <button
-                      key={brand}
-                      onClick={() => setFormData(prev => ({ ...prev, manufacturer: brand }))}
-                      className={`p-3 border-2 rounded-lg text-center transition-colors ${
-                        formData.manufacturer === brand
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-medium">{brand}</div>
-                    </button>
-                  ))}
-                </div>
+              <div>
+                <h2 className="text-xl font-semibold mb-4">What type of device are you adding?</h2>
                 
-                {/* Model Selection (Optional) */}
-                {formData.manufacturer && selectedCategory.commonModels[formData.manufacturer] && (
-                  <div className="mt-6 space-y-3">
-                    <Label>Common models (optional):</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCategory.commonModels[formData.manufacturer].map((model) => (
-                        <Badge
-                          key={model}
-                          variant={formData.model === model ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => setFormData(prev => ({ 
-                            ...prev, 
-                            model: prev.model === model ? '' : model 
-                          }))}
-                        >
-                          {model}
-                        </Badge>
-                      ))}
-                    </div>
+                {categoriesLoading ? (
+                  <div className="text-center py-8">Loading device categories...</div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                    {categories.filter((cat: DeviceCategory) => cat.isActive).map((category: DeviceCategory) => (
+                      <Button
+                        key={category.id}
+                        variant={formData.categoryId === category.id ? "default" : "outline"}
+                        className="h-auto p-4 flex flex-col items-center space-y-2"
+                        onClick={() => handleCategorySelect(category.id)}
+                      >
+                        <Settings className="h-6 w-6" />
+                        <div className="text-center">
+                          <div className="font-medium text-sm">{category.displayName}</div>
+                          <div className="text-xs text-gray-500">{category.description}</div>
+                        </div>
+                      </Button>
+                    ))}
+                    
+                    {/* Custom Category Option */}
+                    <Button
+                      variant={isCustomCategory ? "default" : "outline"}
+                      className="h-auto p-4 flex flex-col items-center space-y-2"
+                      onClick={() => handleCategorySelect('custom')}
+                    >
+                      <Plus className="h-6 w-6" />
+                      <div className="text-center">
+                        <div className="font-medium text-sm">Other/Custom</div>
+                        <div className="text-xs text-gray-500">Define your own</div>
+                      </div>
+                    </Button>
+                  </div>
+                )}
+
+                {/* Custom Category Input */}
+                {isCustomCategory && (
+                  <div className="mb-6">
+                    <Label htmlFor="customCategory">Custom Device Category</Label>
                     <Input
-                      placeholder="Or enter model manually..."
-                      value={formData.model}
-                      onChange={(e) => setFormData(prev => ({ ...prev, model: e.target.value }))}
+                      id="customCategory"
+                      placeholder="e.g., Pool Equipment, Custom Sensor, etc."
+                      value={formData.customCategory}
+                      onChange={(e) => setFormData(prev => ({ ...prev, customCategory: e.target.value }))}
+                      className="mt-2"
                     />
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Step 3: Room Location */}
-            {currentStep === 3 && (
-              <div className="space-y-4">
-                <Label>Where is this device located?</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {commonRooms.map((room) => (
-                    <button
-                      key={room}
-                      onClick={() => setFormData(prev => ({ ...prev, roomLocation: room }))}
-                      className={`p-3 border-2 rounded-lg text-center transition-colors ${
-                        formData.roomLocation === room
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-medium text-sm">{room}</div>
-                    </button>
-                  ))}
+                {/* Navigation */}
+                <div className="flex justify-between">
+                  <div />
+                  <Button 
+                    onClick={() => setCurrentStep(2)}
+                    disabled={!canProceedToStep2}
+                  >
+                    Next: Brand & Model
+                  </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 4: Review and Customize */}
-            {currentStep === 4 && (
-              <div className="space-y-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-blue-800 mb-3">Device Summary</h3>
-                  <div className="space-y-2 text-sm">
-                    <div><strong>Type:</strong> {formData.category}</div>
-                    <div><strong>Brand:</strong> {formData.manufacturer}</div>
-                    {formData.model && <div><strong>Model:</strong> {formData.model}</div>}
-                    <div><strong>Location:</strong> {formData.roomLocation}</div>
+            {/* Step 2: Brand & Model */}
+            {currentStep === 2 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Brand and Model</h2>
+                
+                {/* Selected Category Display */}
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <span className="font-medium">
+                      Category: {isCustomCategory ? formData.customCategory : selectedCategory?.displayName}
+                    </span>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Custom device name (optional):</Label>
-                  <Input
-                    placeholder={`${formData.roomLocation} ${formData.category}`}
-                    value={formData.customName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, customName: e.target.value }))}
-                  />
-                  <p className="text-sm text-gray-600">
-                    If left empty, will be named: "{formData.roomLocation} {formData.category}"
-                  </p>
-                </div>
+                {/* Brand Selection */}
+                {!isCustomCategory && (
+                  <div className="mb-6">
+                    <Label htmlFor="brand">Brand</Label>
+                    {brandsLoading ? (
+                      <div className="py-4 text-gray-500">Loading brands...</div>
+                    ) : (
+                      <Select onValueChange={handleBrandSelect} value={isCustomBrand ? 'custom' : formData.brandId}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Select a brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((brand: DeviceBrand) => (
+                            <SelectItem key={brand.id} value={brand.id}>
+                              {brand.displayName}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Other/Custom Brand</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
 
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-green-800 mb-2">What happens next:</h4>
-                  <ul className="text-sm text-green-700 space-y-1">
-                    <li>• Device will be added to your home</li>
-                    <li>• Manual and setup instructions will be automatically found</li>
-                    <li>• Device will appear in your smart home interface</li>
-                    <li>• Guest assistance will include this device</li>
-                  </ul>
+                {/* Custom Brand Input */}
+                {(isCustomBrand || isCustomCategory) && (
+                  <div className="mb-6">
+                    <Label htmlFor="customBrand">Custom Brand</Label>
+                    <Input
+                      id="customBrand"
+                      placeholder="Enter brand name"
+                      value={formData.customBrand}
+                      onChange={(e) => setFormData(prev => ({ ...prev, customBrand: e.target.value }))}
+                      className="mt-2"
+                    />
+                  </div>
+                )}
+
+                {/* Model Selection */}
+                {!isCustomBrand && formData.brandId && (
+                  <div className="mb-6">
+                    <Label htmlFor="model">Model</Label>
+                    {modelsLoading ? (
+                      <div className="py-4 text-gray-500">Loading models...</div>
+                    ) : (
+                      <Select onValueChange={handleModelSelect} value={isCustomModel ? 'custom' : formData.modelId}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {models.map((model: DeviceModel) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              {model.displayName}
+                              {model.modelNumber && <span className="text-gray-500 ml-2">({model.modelNumber})</span>}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Other/Custom Model</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom Model Input */}
+                {(isCustomModel || isCustomBrand || isCustomCategory) && (
+                  <div className="mb-6">
+                    <Label htmlFor="customModel">Custom Model</Label>
+                    <Input
+                      id="customModel"
+                      placeholder="Enter model name or number"
+                      value={formData.customModel}
+                      onChange={(e) => setFormData(prev => ({ ...prev, customModel: e.target.value }))}
+                      className="mt-2"
+                    />
+                  </div>
+                )}
+
+                {/* Navigation */}
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                    Back
+                  </Button>
+                  <Button 
+                    onClick={() => setCurrentStep(3)}
+                    disabled={!canProceedToStep3}
+                  >
+                    Next: Details
+                  </Button>
                 </div>
               </div>
             )}
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between pt-6">
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-                disabled={currentStep === 1}
-              >
-                Previous
-              </Button>
-              
-              {currentStep < 4 ? (
-                <Button
-                  onClick={() => setCurrentStep(currentStep + 1)}
-                  disabled={!canProceed}
-                >
-                  Next
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSubmit}
-                  disabled={createDeviceMutation.isPending}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {createDeviceMutation.isPending ? 'Adding Device...' : 'Add Device'}
-                </Button>
-              )}
-            </div>
+            {/* Step 3: Device Details */}
+            {currentStep === 3 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Device Details</h2>
+
+                {/* Device Name */}
+                <div className="mb-6">
+                  <Label htmlFor="deviceName">Device Name *</Label>
+                  <Input
+                    id="deviceName"
+                    placeholder="e.g., Living Room TV"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="mt-2"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">Give this device a friendly name</p>
+                </div>
+
+                {/* Room Location */}
+                <div className="mb-6">
+                  <Label htmlFor="room">Room Location</Label>
+                  <Select onValueChange={(value) => setFormData(prev => ({ ...prev, roomLocation: value }))} value={formData.roomLocation}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select room" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {commonRooms.map((room) => (
+                        <SelectItem key={room} value={room}>
+                          {room}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Discovery Method */}
+                <div className="mb-6">
+                  <Label htmlFor="discoveryMethod">How did you find this device?</Label>
+                  <Select onValueChange={(value) => setFormData(prev => ({ ...prev, discoveryMethod: value as any }))} value={formData.discoveryMethod}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Manual Entry</SelectItem>
+                      <SelectItem value="visual">Visual Recognition</SelectItem>
+                      <SelectItem value="wifi_scan">WiFi Scan</SelectItem>
+                      <SelectItem value="barcode">Barcode Scan</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Notes */}
+                <div className="mb-6">
+                  <Label htmlFor="notes">Notes (Optional)</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Any additional information about this device..."
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    className="mt-2"
+                    rows={3}
+                  />
+                </div>
+
+                {/* Purchase Date */}
+                <div className="mb-6 grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="purchaseDate">Purchase Date (Optional)</Label>
+                    <Input
+                      id="purchaseDate"
+                      type="date"
+                      value={formData.purchaseDate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                      className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="warrantyExpiry">Warranty Expiry (Optional)</Label>
+                    <Input
+                      id="warrantyExpiry"
+                      type="date"
+                      value={formData.warrantyExpiry}
+                      onChange={(e) => setFormData(prev => ({ ...prev, warrantyExpiry: e.target.value }))}
+                      className="mt-2"
+                    />
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-medium mb-2">Device Summary</h3>
+                  <div className="space-y-1 text-sm text-gray-600">
+                    <div><strong>Name:</strong> {formData.name}</div>
+                    <div><strong>Category:</strong> {isCustomCategory ? formData.customCategory : selectedCategory?.displayName}</div>
+                    <div><strong>Brand:</strong> {isCustomBrand || isCustomCategory ? formData.customBrand : selectedBrand?.displayName}</div>
+                    <div><strong>Model:</strong> {isCustomModel || isCustomBrand || isCustomCategory ? formData.customModel : selectedModel?.displayName}</div>
+                    <div><strong>Room:</strong> {formData.roomLocation}</div>
+                  </div>
+                </div>
+
+                {/* Navigation */}
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                    Back
+                  </Button>
+                  <Button 
+                    onClick={handleSubmit}
+                    disabled={createDeviceMutation.isPending || !formData.name}
+                  >
+                    {createDeviceMutation.isPending ? 'Adding Device...' : 'Add Device'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

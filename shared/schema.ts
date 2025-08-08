@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, decimal, boolean, jsonb, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, decimal, boolean, jsonb, json, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -81,17 +81,67 @@ export const userHomes = pgTable("user_homes", {
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
+// Device Categories Table
+export const deviceCategories = pgTable("device_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }), // Lucide icon name
+  isCustom: boolean("is_custom").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Device Brands Table
+export const deviceBrands = pgTable("device_brands", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").references(() => deviceCategories.id),
+  name: varchar("name", { length: 100 }).notNull(),
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  website: varchar("website", { length: 255 }),
+  supportUrl: varchar("support_url", { length: 255 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Device Models Table
+export const deviceModels = pgTable("device_models", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  brandId: varchar("brand_id").notNull().references(() => deviceBrands.id),
+  name: varchar("name", { length: 150 }).notNull(),
+  displayName: varchar("display_name", { length: 150 }),
+  modelNumber: varchar("model_number", { length: 100 }),
+  description: text("description"),
+  specifications: jsonb("specifications").default({}),
+  manualUrl: varchar("manual_url", { length: 500 }),
+  supportUrl: varchar("support_url", { length: 500 }),
+  imageUrl: varchar("image_url", { length: 500 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Updated Devices Table
 export const devices = pgTable("devices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   homeId: varchar("home_id").notNull().references(() => customerHomes.id),
+  categoryId: varchar("category_id").references(() => deviceCategories.id),
+  brandId: varchar("brand_id").references(() => deviceBrands.id),
+  modelId: varchar("model_id").references(() => deviceModels.id),
   name: varchar("name", { length: 200 }).notNull(),
-  manufacturer: varchar("manufacturer", { length: 100 }),
-  model: varchar("model", { length: 100 }),
+  customCategory: varchar("custom_category", { length: 100 }), // For user-defined categories
+  customBrand: varchar("custom_brand", { length: 100 }), // For unlisted brands
+  customModel: varchar("custom_model", { length: 100 }), // For unlisted models
   roomLocation: varchar("room_location", { length: 100 }),
-  discoveryMethod: varchar("discovery_method", { length: 50 }), // 'wifi_scan', 'manual', 'barcode'
+  discoveryMethod: varchar("discovery_method", { length: 50 }), // 'wifi_scan', 'manual', 'barcode', 'visual'
   status: varchar("status", { length: 20 }).notNull().default("active"),
   metadata: jsonb("metadata").default({}),
+  notes: text("notes"), // User notes about the device
+  purchaseDate: date("purchase_date"),
+  warrantyExpiry: date("warranty_expiry"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const deviceDocumentation = pgTable("device_documentation", {
@@ -157,9 +207,26 @@ export const insertUserHomeSchema = createInsertSchema(userHomes).omit({
   joinedAt: true,
 });
 
+// New device-related schemas
+export const insertDeviceCategorySchema = createInsertSchema(deviceCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDeviceBrandSchema = createInsertSchema(deviceBrands).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDeviceModelSchema = createInsertSchema(deviceModels).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertDeviceSchema = createInsertSchema(devices).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export const insertDeviceDocumentationSchema = createInsertSchema(deviceDocumentation).omit({
@@ -195,6 +262,13 @@ export type CustomerHome = typeof customerHomes.$inferSelect;
 export type InsertCustomerHome = z.infer<typeof insertCustomerHomeSchema>;
 export type UserHome = typeof userHomes.$inferSelect;
 export type InsertUserHome = z.infer<typeof insertUserHomeSchema>;
+// Device taxonomy types
+export type DeviceCategory = typeof deviceCategories.$inferSelect;
+export type InsertDeviceCategory = z.infer<typeof insertDeviceCategorySchema>;
+export type DeviceBrand = typeof deviceBrands.$inferSelect;
+export type InsertDeviceBrand = z.infer<typeof insertDeviceBrandSchema>;
+export type DeviceModel = typeof deviceModels.$inferSelect;
+export type InsertDeviceModel = z.infer<typeof insertDeviceModelSchema>;
 export type Device = typeof devices.$inferSelect;
 export type InsertDevice = z.infer<typeof insertDeviceSchema>;
 export type DeviceDocumentation = typeof deviceDocumentation.$inferSelect;
