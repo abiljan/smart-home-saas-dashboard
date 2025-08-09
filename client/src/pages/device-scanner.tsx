@@ -58,18 +58,20 @@ export default function DeviceScannerPage() {
   const barcodeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const visionMutation = useMutation({
-    mutationFn: (imageData: string) =>
-      apiRequest('POST', '/api/vision/detect-devices', { 
+    mutationFn: async (imageData: string): Promise<ScanResult> => {
+      const result = await apiRequest('POST', '/api/vision/detect-devices', { 
         image: imageData, 
         engine: detectionEngine,
         scanType: 'devices',
         context: { room: 'auto-detect' }
-      }),
+      });
+      return result as unknown as ScanResult;
+    },
     onSuccess: (result: ScanResult) => {
       setDetections(result.detectedDevices);
       setIsProcessing(false);
       if (result.detectedDevices.length > 0) {
-        const engineLabel = result.engine === 'yolo' ? 'YOLOv8' : 'OpenAI';
+        const engineLabel = (result as any).engine === 'yolo' ? 'YOLOv8' : 'OpenAI';
         const timing = result.processingTime ? ` in ${result.processingTime}ms` : '';
         toast({
           title: `Found ${result.detectedDevices.length} device${result.detectedDevices.length > 1 ? 's' : ''}`,
@@ -88,13 +90,11 @@ export default function DeviceScannerPage() {
   });
 
   const addDeviceMutation = useMutation({
-    mutationFn: (deviceData: any) =>
-      apiRequest(`/api/homes/${homeId}/devices`, {
-        method: 'POST',
-        body: JSON.stringify(deviceData),
-        headers: { 'Content-Type': 'application/json' }
-      }),
-    onSuccess: (device) => {
+    mutationFn: async (deviceData: any) => {
+      const result = await apiRequest('POST', `/api/homes/${homeId}/devices`, deviceData);
+      return result;
+    },
+    onSuccess: (device: any) => {
       toast({
         title: "Device Added",
         description: `${device.name} has been added to your home.`,
@@ -142,7 +142,7 @@ export default function DeviceScannerPage() {
         return false;
       }
 
-      setAvailableCameras(cameras);
+      setAvailableCameras([...cameras]);
       
       // Auto-select best camera (rear camera if available, otherwise first camera)
       const rearCamera = cameras.find(camera => 
@@ -267,6 +267,73 @@ export default function DeviceScannerPage() {
     setIsScanning(false);
   }, [stream]);
 
+  // Handle scanned codes (both QR and barcode)
+  const handleCodeScanned = useCallback(async (code: string, type: 'qr' | 'barcode') => {
+    try {
+      setIsProcessing(true);
+      
+      // Try to look up device information from the scanned code
+      const response = await apiRequest('POST', '/api/devices/lookup-by-code', {
+        code,
+        type,
+        homeId
+      });
+
+      if ((response as any).device) {
+        // Auto-add device if found
+        const deviceData = {
+          ...(response as any).device,
+          discoveryMethod: type === 'qr' ? 'qr_code' : 'barcode',
+          status: 'online',
+          roomLocation: 'Scanned Device'
+        };
+        addDeviceMutation.mutate(deviceData);
+      } else {
+        toast({
+          title: "Device Not Found",
+          description: `Could not find device information for ${type.toUpperCase()} code: ${code}`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Code lookup failed:', error);
+      toast({
+        title: "Lookup Failed",
+        description: "Failed to look up device information from scanned code.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [homeId, addDeviceMutation, toast]);
+
+  // QR Code scanning function
+  const scanForQRCode = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (qrCode) {
+      setScannedCode(qrCode.data);
+      handleCodeScanned(qrCode.data, 'qr');
+      toast({
+        title: "QR Code Detected",
+        description: `Scanned: ${qrCode.data.substring(0, 50)}${qrCode.data.length > 50 ? '...' : ''}`,
+      });
+    }
+  }, [handleCodeScanned, toast]);
+
   const captureAndAnalyze = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || isProcessing) return;
 
@@ -319,33 +386,6 @@ export default function DeviceScannerPage() {
     addDeviceMutation.mutate(deviceData);
   };
 
-  // QR Code scanning function
-  const scanForQRCode = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
-
-    if (qrCode) {
-      setScannedCode(qrCode.data);
-      handleCodeScanned(qrCode.data, 'qr');
-      toast({
-        title: "QR Code Detected",
-        description: `Scanned: ${qrCode.data.substring(0, 50)}${qrCode.data.length > 50 ? '...' : ''}`,
-      });
-    }
-  }, [toast]);
-
   // Initialize barcode scanner
   const initializeBarcodeScanner = useCallback(() => {
     if (!barcodeInitialized && videoRef.current) {
@@ -396,46 +436,6 @@ export default function DeviceScannerPage() {
       });
     }
   }, [barcodeInitialized, toast]);
-
-  // Handle scanned codes (both QR and barcode)
-  const handleCodeScanned = useCallback(async (code: string, type: 'qr' | 'barcode') => {
-    try {
-      setIsProcessing(true);
-      
-      // Try to look up device information from the scanned code
-      const response = await apiRequest('POST', '/api/devices/lookup-by-code', {
-        code,
-        type,
-        homeId
-      });
-
-      if (response.device) {
-        // Auto-add device if found
-        const deviceData = {
-          ...response.device,
-          discoveryMethod: type === 'qr' ? 'qr_code' : 'barcode',
-          status: 'online',
-          roomLocation: 'Scanned Device'
-        };
-        addDeviceMutation.mutate(deviceData);
-      } else {
-        toast({
-          title: "Device Not Found",
-          description: `Could not find device information for ${type.toUpperCase()} code: ${code}`,
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Code lookup failed:', error);
-      toast({
-        title: "Lookup Failed",
-        description: "Failed to look up device information from scanned code.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [homeId, addDeviceMutation, toast]);
 
   // Start continuous scanning based on mode
   const startContinuousScanning = useCallback(() => {
