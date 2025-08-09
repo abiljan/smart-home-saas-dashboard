@@ -5,10 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Camera, Scan, Zap, CheckCircle, AlertCircle, Settings } from "lucide-react";
+import { ArrowLeft, Camera, Scan, Zap, CheckCircle, AlertCircle, Settings, QrCode } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import jsQR from "jsqr";
+// @ts-ignore
+import Quagga from "quagga";
 
 interface DetectedDevice {
   type: string;
@@ -42,7 +45,7 @@ export default function DeviceScannerPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [detections, setDetections] = useState<DetectedDevice[]>([]);
-  const [scanMode, setScanMode] = useState<'room' | 'device'>('room');
+  const [scanMode, setScanMode] = useState<'room' | 'device' | 'barcode' | 'qr'>('room');
   const [detectionEngine, setDetectionEngine] = useState<'yolo' | 'openai'>('yolo');
   const [isProcessing, setIsProcessing] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<{yolo: boolean, openai: boolean}>({yolo: false, openai: false});
@@ -50,6 +53,9 @@ export default function DeviceScannerPage() {
   const [cameraError, setCameraError] = useState<string>('');
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [scannedCode, setScannedCode] = useState<string>('');
+  const [barcodeInitialized, setBarcodeInitialized] = useState(false);
+  const barcodeCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const visionMutation = useMutation({
     mutationFn: (imageData: string) =>
@@ -277,12 +283,22 @@ export default function DeviceScannerPage() {
     // Draw current video frame to canvas
     ctx.drawImage(video, 0, 0);
 
-    // Convert to base64 image
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
-    
-    setIsProcessing(true);
-    visionMutation.mutate(imageData);
-  }, [isProcessing, visionMutation]);
+    if (scanMode === 'qr') {
+      // QR Code scanning
+      scanForQRCode();
+    } else if (scanMode === 'barcode') {
+      // Barcode scanning is handled by Quagga continuous scanning
+      toast({
+        title: "Barcode Mode Active",
+        description: "Hold a barcode steady in view for automatic detection.",
+      });
+    } else {
+      // Visual recognition (room/device scanning)
+      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+      setIsProcessing(true);
+      visionMutation.mutate(imageData);
+    }
+  }, [isProcessing, visionMutation, scanMode, scanForQRCode, toast]);
 
   const handleAddDevice = (detection: DetectedDevice) => {
     const deviceData = {
@@ -302,6 +318,140 @@ export default function DeviceScannerPage() {
 
     addDeviceMutation.mutate(deviceData);
   };
+
+  // QR Code scanning function
+  const scanForQRCode = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (qrCode) {
+      setScannedCode(qrCode.data);
+      handleCodeScanned(qrCode.data, 'qr');
+      toast({
+        title: "QR Code Detected",
+        description: `Scanned: ${qrCode.data.substring(0, 50)}${qrCode.data.length > 50 ? '...' : ''}`,
+      });
+    }
+  }, [toast]);
+
+  // Initialize barcode scanner
+  const initializeBarcodeScanner = useCallback(() => {
+    if (!barcodeInitialized && videoRef.current) {
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: videoRef.current,
+          constraints: {
+            width: 1280,
+            height: 720,
+            facingMode: "environment"
+          }
+        },
+        locator: {
+          patchSize: "medium",
+          halfSample: true
+        },
+        numOfWorkers: 2,
+        decoder: {
+          readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader"]
+        },
+        locate: true
+      }, (err: any) => {
+        if (err) {
+          console.log('Barcode scanner initialization failed:', err);
+          toast({
+            title: "Barcode Scanner Error",
+            description: "Failed to initialize barcode scanner. Using manual input instead.",
+            variant: "destructive"
+          });
+          return;
+        }
+        console.log('Barcode scanner initialized successfully');
+        setBarcodeInitialized(true);
+        Quagga.start();
+      });
+
+      Quagga.onDetected((data: any) => {
+        setScannedCode(data.codeResult.code);
+        handleCodeScanned(data.codeResult.code, 'barcode');
+        toast({
+          title: "Barcode Detected",
+          description: `Scanned: ${data.codeResult.code}`,
+        });
+        Quagga.stop();
+        setBarcodeInitialized(false);
+      });
+    }
+  }, [barcodeInitialized, toast]);
+
+  // Handle scanned codes (both QR and barcode)
+  const handleCodeScanned = useCallback(async (code: string, type: 'qr' | 'barcode') => {
+    try {
+      setIsProcessing(true);
+      
+      // Try to look up device information from the scanned code
+      const response = await apiRequest('POST', '/api/devices/lookup-by-code', {
+        code,
+        type,
+        homeId
+      });
+
+      if (response.device) {
+        // Auto-add device if found
+        const deviceData = {
+          ...response.device,
+          discoveryMethod: type === 'qr' ? 'qr_code' : 'barcode',
+          status: 'online',
+          roomLocation: 'Scanned Device'
+        };
+        addDeviceMutation.mutate(deviceData);
+      } else {
+        toast({
+          title: "Device Not Found",
+          description: `Could not find device information for ${type.toUpperCase()} code: ${code}`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Code lookup failed:', error);
+      toast({
+        title: "Lookup Failed",
+        description: "Failed to look up device information from scanned code.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [homeId, addDeviceMutation, toast]);
+
+  // Start continuous scanning based on mode
+  const startContinuousScanning = useCallback(() => {
+    if (scanMode === 'qr') {
+      const qrInterval = setInterval(scanForQRCode, 500); // Scan every 500ms
+      return () => clearInterval(qrInterval);
+    } else if (scanMode === 'barcode') {
+      initializeBarcodeScanner();
+      return () => {
+        if (barcodeInitialized) {
+          Quagga.stop();
+          setBarcodeInitialized(false);
+        }
+      };
+    }
+  }, [scanMode, scanForQRCode, initializeBarcodeScanner, barcodeInitialized]);
 
   // Check service availability
   const checkServiceStatus = useCallback(async () => {
@@ -346,6 +496,17 @@ export default function DeviceScannerPage() {
     };
   }, [checkCameraCapabilities, checkServiceStatus, availableCameras.length, stopCamera]);
 
+  // Handle continuous scanning for barcode/QR modes
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    
+    if (cameraReady && (scanMode === 'qr' || scanMode === 'barcode')) {
+      cleanup = startContinuousScanning();
+    }
+    
+    return cleanup;
+  }, [cameraReady, scanMode, startContinuousScanning]);
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-4xl mx-auto p-4">
@@ -373,12 +534,13 @@ export default function DeviceScannerPage() {
                     <Camera className="h-5 w-5" />
                     Camera View
                   </CardTitle>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       variant={scanMode === 'room' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setScanMode('room')}
                     >
+                      <Camera className="h-3 w-3 mr-1" />
                       Room Scan
                     </Button>
                     <Button
@@ -386,7 +548,24 @@ export default function DeviceScannerPage() {
                       size="sm"
                       onClick={() => setScanMode('device')}
                     >
+                      <Zap className="h-3 w-3 mr-1" />
                       Focus Device
+                    </Button>
+                    <Button
+                      variant={scanMode === 'qr' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setScanMode('qr')}
+                    >
+                      <QrCode className="h-3 w-3 mr-1" />
+                      QR Code
+                    </Button>
+                    <Button
+                      variant={scanMode === 'barcode' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setScanMode('barcode')}
+                    >
+                      <Scan className="h-3 w-3 mr-1" />
+                      Barcode
                     </Button>
                   </div>
                 </div>
@@ -497,6 +676,7 @@ export default function DeviceScannerPage() {
                         className="w-full h-full object-cover"
                       />
                       <canvas ref={canvasRef} className="hidden" />
+                      <canvas ref={barcodeCanvasRef} className="hidden" />
                       
                       {/* Detection Overlays */}
                       {detections.map((detection, idx) => (
@@ -538,8 +718,21 @@ export default function DeviceScannerPage() {
                       disabled={isProcessing}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
-                      <Scan className="h-4 w-4 mr-2" />
-                      {isProcessing ? 'Analyzing...' : 'Scan for Devices'}
+                      {scanMode === 'qr' ? (
+                        <QrCode className="h-4 w-4 mr-2" />
+                      ) : scanMode === 'barcode' ? (
+                        <Scan className="h-4 w-4 mr-2" />
+                      ) : (
+                        <Camera className="h-4 w-4 mr-2" />
+                      )}
+                      {isProcessing 
+                        ? 'Analyzing...' 
+                        : scanMode === 'qr' 
+                        ? 'Scan QR Code' 
+                        : scanMode === 'barcode'
+                        ? 'Activate Barcode Scanner'
+                        : 'Scan for Devices'
+                      }
                     </Button>
                     <Button
                       onClick={stopCamera}
@@ -616,21 +809,47 @@ export default function DeviceScannerPage() {
                 <CardTitle className="text-white text-sm">How to Use</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-gray-400 space-y-2">
-                <div>1. Allow camera access when prompted</div>
-                <div>2. Point camera at your devices</div>
-                <div>3. Click "Scan for Devices"</div>
-                <div>4. Tap detected devices to add them</div>
-                <div className="pt-2 text-xs border-t border-gray-600 mt-3 pt-3">
-                  <strong>Tips for Laptops:</strong><br/>
-                  • Use front-facing camera if available<br/>
-                  • Ensure good lighting for better detection<br/>
-                  • Move closer to devices for clearer capture<br/>
-                  • Try different angles if detection fails
-                </div>
+                {scanMode === 'qr' || scanMode === 'barcode' ? (
+                  <>
+                    <div>1. Allow camera access when prompted</div>
+                    <div>2. Hold the {scanMode === 'qr' ? 'QR code' : 'barcode'} steady in view</div>
+                    <div>3. {scanMode === 'qr' ? 'Click "Scan" or wait for auto-detection' : 'Barcode will be detected automatically'}</div>
+                    <div>4. Device will be added automatically if found</div>
+                    <div className="pt-2 text-xs border-t border-gray-600 mt-3 pt-3">
+                      <strong>{scanMode === 'qr' ? 'QR Code' : 'Barcode'} Tips:</strong><br/>
+                      • Ensure code is well-lit and clearly visible<br/>
+                      • Hold device steady for better scanning<br/>
+                      • Try different distances if scanning fails<br/>
+                      • Clean the camera lens for better clarity
+                    </div>
+                    {scannedCode && (
+                      <div className="pt-2 text-xs border-t border-gray-600 mt-3 pt-3">
+                        <strong>Last Scanned:</strong><br/>
+                        <span className="font-mono text-green-400">{scannedCode.substring(0, 40)}{scannedCode.length > 40 ? '...' : ''}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>1. Allow camera access when prompted</div>
+                    <div>2. Point camera at your devices</div>
+                    <div>3. Click "Scan for Devices"</div>
+                    <div>4. Tap detected devices to add them</div>
+                    <div className="pt-2 text-xs border-t border-gray-600 mt-3 pt-3">
+                      <strong>Tips for Visual Scanning:</strong><br/>
+                      • Use front-facing camera if available<br/>
+                      • Ensure good lighting for better detection<br/>
+                      • Move closer to devices for clearer capture<br/>
+                      • Try different angles if detection fails
+                    </div>
+                  </>
+                )}
                 <div className="pt-2 text-xs">
                   <strong>Scan Modes:</strong><br/>
                   <strong>Room Scan:</strong> Wide view for multiple devices<br/>
-                  <strong>Focus Device:</strong> Close-up for single device
+                  <strong>Focus Device:</strong> Close-up for single device<br/>
+                  <strong>QR Code:</strong> Scan device QR codes for instant setup<br/>
+                  <strong>Barcode:</strong> Scan UPC/EAN barcodes for product info
                 </div>
               </CardContent>
             </Card>
